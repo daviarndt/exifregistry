@@ -1,5 +1,9 @@
 # exif-kit
 
+[![npm](https://img.shields.io/npm/v/exif-kit)](https://www.npmjs.com/package/exif-kit)
+[![CI](https://github.com/daviarndt/exif-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/daviarndt/exif-kit/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/exif-kit)](LICENSE)
+
 A friendly command-line toolkit for photographers and filmmakers to **inspect and edit photo/video metadata** — EXIF, GPS location, capture dates and more.
 
 Works with JPEG, PNG, TIFF, HEIC, all major RAW formats (CR2/CR3, NEF, ARW, DNG, RAF, ORF...) and video containers (MP4, MOV, AVI...), powered by the battle-tested [ExifTool](https://exiftool.org) — which comes **bundled**, so there is nothing else to install.
