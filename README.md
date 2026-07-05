@@ -2,7 +2,7 @@
 
 A friendly command-line toolkit for photographers and filmmakers to **inspect and edit photo/video metadata** — EXIF, GPS location, capture dates and more.
 
-Works with JPEG, PNG, TIFF, HEIC, all major RAW formats (CR2/CR3, NEF, ARW, DNG, RAF, ORF...) and video containers (MP4, MOV, AVI...), powered by the battle-tested [ExifTool](https://exiftool.org).
+Works with JPEG, PNG, TIFF, HEIC, all major RAW formats (CR2/CR3, NEF, ARW, DNG, RAF, ORF...) and video containers (MP4, MOV, AVI...), powered by the battle-tested [ExifTool](https://exiftool.org) — which comes **bundled**, so there is nothing else to install.
 
 ```
 $ exifkit show IMG_4021.CR3
@@ -25,23 +25,22 @@ $ exifkit show IMG_4021.CR3
 - 🕑 **Date editing** — fix capture dates, modification dates, or **shift all dates** to fix a wrong camera clock/timezone
 - 📋 **Copy metadata** between files (e.g. restore metadata after an export stripped it)
 - 🧹 **Strip everything** for privacy-safe sharing
+- ↩️ **Undo** — every edit keeps a backup by default; `exifkit undo` restores it
 - 🧭 **Interactive mode** — just run `exifkit` and follow the menus; zero flags to memorize
-- 🛟 **Safe by default** — every edit keeps a backup of the original file unless you pass `--no-backup`
+- 📦 **Self-contained** — ExifTool is bundled; `npm install` and you're done
 
 ## Installation
 
-exif-kit needs two things: [ExifTool](https://exiftool.org) (the metadata engine) and Python 3.10+.
+Requires [Node.js](https://nodejs.org) 20.18 or newer.
 
 ```bash
-# 1. Install ExifTool
-brew install exiftool            # macOS
-sudo apt install libimage-exiftool-perl   # Debian/Ubuntu
+npm install -g exif-kit
+```
 
-# 2. Install exif-kit (pipx recommended — keeps it isolated)
-pipx install git+https://github.com/daviarndt/exif-kit.git
+Or straight from GitHub:
 
-# ...or with plain pip
-pip install git+https://github.com/daviarndt/exif-kit.git
+```bash
+npm install -g github:daviarndt/exif-kit
 ```
 
 Verify everything is ready:
@@ -89,11 +88,15 @@ exifkit copy original.CR3 exported.jpg
 
 # Strip ALL metadata (privacy)
 exifkit strip photo.jpg
+
+# Made a mistake? Restore the automatic backup
+exifkit undo photo.jpg
+exifkit undo ~/Photos/trip           # restore every backup in a folder
 ```
 
 ### Backups
 
-Every write keeps the untouched original next to the edited file with an `_original` suffix (e.g. `photo.jpg_original`). Once you're happy with an edit, delete the backups — or skip them entirely with `--no-backup`.
+Every write keeps the untouched original next to the edited file with an `_original` suffix (e.g. `photo.jpg_original`). Restore it any time with `exifkit undo`, or skip backups entirely with `--no-backup`.
 
 ## Supported formats
 
@@ -110,12 +113,11 @@ Anything ExifTool understands can be read; write support follows ExifTool's [sup
 ```bash
 git clone https://github.com/daviarndt/exif-kit.git
 cd exif-kit
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-pytest
+npm install
+npm run build
+npm test
+npm run dev -- show photo.jpg   # run from source
 ```
-
-See [HANDOVER.md](HANDOVER.md) for architecture notes and the project work plan.
 
 ## License
 
