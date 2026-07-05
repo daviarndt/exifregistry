@@ -67,8 +67,9 @@ exifkit
 ### Direct commands
 
 ```bash
-# Inspect metadata (full report: key fields first, then everything else)
+# Inspect metadata (key fields: camera, shutter count, exposure, dates, GPS)
 exifkit show photo.jpg
+exifkit show photo.jpg -v           # verbose: also list ALL remaining tags
 exifkit show *.CR3                  # globs work
 exifkit show ~/Photos/trip -r       # whole folders, recursively
 exifkit show photo.jpg --all        # flat alphabetical dump instead

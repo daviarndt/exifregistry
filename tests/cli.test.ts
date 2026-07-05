@@ -50,6 +50,28 @@ describe("cli", () => {
     expect(logs.join("\n")).toContain("2024:06:01 14:30:00");
   });
 
+  it("show is compact by default and verbose with -v", async () => {
+    const { file } = makeScratchJpeg();
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((line: string) => {
+      logs.push(String(line));
+    });
+    try {
+      await run(["show", file]);
+      const compact = logs.join("\n");
+      expect(compact).toContain("more tags hidden");
+      expect(compact).not.toContain("ExifToolVersion");
+
+      logs.length = 0;
+      await run(["show", file, "--verbose"]);
+      const verbose = logs.join("\n");
+      expect(verbose).toContain("All other tags");
+      expect(verbose).toContain("ExifToolVersion");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("gps without coordinates fails as a user error", async () => {
     const { file } = makeScratchJpeg();
     await expect(run(["gps", file])).rejects.toThrow(/Provide a location/);

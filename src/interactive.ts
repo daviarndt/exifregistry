@@ -57,9 +57,16 @@ async function applyGroupedGps(
 async function actionInspect(): Promise<void> {
   const paths = await askFiles();
   if (!paths) return;
+  const detail = await select({
+    message: "How much detail?",
+    choices: [
+      { name: "Key fields only", value: "key" },
+      { name: "Everything (verbose — all tags)", value: "verbose" },
+    ],
+  });
   const metadata = await engine.readFull(paths);
   for (const item of metadata) {
-    printFullReport(item);
+    printFullReport(item, detail === "verbose");
   }
 
   const wantsExport = await confirm({

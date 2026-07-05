@@ -193,18 +193,23 @@ function newTable(head?: string[]): Table.Table {
   });
 }
 
-export function printFullReport(full: FullMetadata): void {
+export function printFullReport(full: FullMetadata, verbose = false): void {
   const { main, other } = fullReportRows(full);
   console.log(pc.bold(pc.cyan(String(full.pretty.FileName ?? ""))));
   const table = newTable();
   for (const [label, value] of main) table.push([pc.bold(label), value]);
   console.log(table.toString());
 
-  if (other.length > 0) {
+  if (other.length === 0) return;
+  if (verbose) {
     console.log(pc.dim(`All other tags (${other.length}):`));
     const rest = newTable();
     for (const [key, value] of other) rest.push([pc.dim(key), pc.dim(value)]);
     console.log(rest.toString());
+  } else {
+    console.log(
+      pc.dim(`… ${other.length} more tags hidden — use verbose (-v) to see them.`),
+    );
   }
 }
 

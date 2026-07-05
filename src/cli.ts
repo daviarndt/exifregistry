@@ -86,12 +86,13 @@ export function buildProgram(): Command {
     .command("show")
     .description("Show metadata for one or more files.")
     .argument("<files...>", "files, folders or glob patterns")
+    .option("-v, --verbose", "also list every remaining tag ('All other tags')")
     .option("-a, --all", "flat alphabetical dump of every tag (raw values)")
     .option("--json", "output raw JSON (machine-readable)")
     .option("-r, --recursive", "recurse into subfolders")
     .option(
       "-e, --export [file.md]",
-      "also export the report to a Markdown file (default: <name>.metadata.md)",
+      "also export the full report to a Markdown file (default: <name>.metadata.md)",
     )
     .action(async (files: string[], opts) => {
       const paths = resolveFiles(files, opts.recursive);
@@ -102,7 +103,7 @@ export function buildProgram(): Command {
       const metadata = await engine.readFull(paths);
       for (const item of metadata) {
         if (opts.all) printAllTags(item.pretty);
-        else printFullReport(item);
+        else printFullReport(item, opts.verbose);
       }
       if (opts.export) {
         const target =
