@@ -16,8 +16,8 @@ import {
   describeFiles,
   printAllTags,
   printError,
+  printFullReport,
   printSuccess,
-  printSummary,
 } from "./display.js";
 import { expandPaths } from "./paths.js";
 import { planRestore, restore } from "./undo.js";
@@ -70,19 +70,19 @@ export function buildProgram(): Command {
     .command("show")
     .description("Show metadata for one or more files.")
     .argument("<files...>", "files, folders or glob patterns")
-    .option("-a, --all", "show every tag instead of the curated summary")
+    .option("-a, --all", "flat alphabetical dump of every tag (raw values)")
     .option("--json", "output raw JSON (machine-readable)")
     .option("-r, --recursive", "recurse into subfolders")
     .action(async (files: string[], opts) => {
       const paths = resolveFiles(files, opts.recursive);
-      const metadata = await engine.read(paths);
       if (opts.json) {
-        console.log(JSON.stringify(metadata, null, 2));
+        console.log(JSON.stringify(await engine.read(paths), null, 2));
         return;
       }
+      const metadata = await engine.readFull(paths);
       for (const item of metadata) {
-        if (opts.all) printAllTags(item);
-        else printSummary(item);
+        if (opts.all) printAllTags(item.pretty);
+        else printFullReport(item);
       }
     });
 

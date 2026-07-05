@@ -15,6 +15,29 @@ export async function read(paths: string[]): Promise<Metadata[]> {
   return Promise.all(paths.map((p) => exiftool.readRaw(p, ["-n"])));
 }
 
+/**
+ * Metadata read twice: `pretty` uses ExifTool's print conversion (e.g.
+ * Flash: "Off, Did not fire"), `numeric` has machine values (e.g. signed
+ * GPS decimals) for computed formatting.
+ */
+export interface FullMetadata {
+  pretty: Metadata;
+  numeric: Metadata;
+}
+
+/** Read both human-readable and numeric metadata for the full report view. */
+export async function readFull(paths: string[]): Promise<FullMetadata[]> {
+  return Promise.all(
+    paths.map(async (p) => {
+      const [pretty, numeric] = await Promise.all([
+        exiftool.readRaw(p, []),
+        exiftool.readRaw(p, ["-n"]),
+      ]);
+      return { pretty, numeric };
+    }),
+  );
+}
+
 export interface WriteOptions {
   /** Keep an untouched copy next to each edited file ('_original' suffix). */
   backup?: boolean;

@@ -4,4 +4,4 @@ export * as engine from "./engine.js";
 export * as fields from "./fields.js";
 export { expandPaths } from "./paths.js";
 export { planRestore, restore } from "./undo.js";
-export { summaryRows } from "./display.js";
+export { fullReportRows } from "./display.js";

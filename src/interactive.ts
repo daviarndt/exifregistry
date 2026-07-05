@@ -10,7 +10,7 @@ import pc from "picocolors";
 
 import * as engine from "./engine.js";
 import * as fields from "./fields.js";
-import { describeFiles, printError, printSuccess, printSummary } from "./display.js";
+import { describeFiles, printError, printFullReport, printSuccess } from "./display.js";
 import { expandPaths } from "./paths.js";
 import { planRestore, restore } from "./undo.js";
 
@@ -55,8 +55,8 @@ async function applyGroupedGps(
 async function actionInspect(): Promise<void> {
   const paths = await askFiles();
   if (!paths) return;
-  for (const item of await engine.read(paths)) {
-    printSummary(item);
+  for (const item of await engine.readFull(paths)) {
+    printFullReport(item);
   }
 }
 

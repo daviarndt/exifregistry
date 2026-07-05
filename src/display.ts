@@ -3,7 +3,7 @@
 import Table from "cli-table3";
 import pc from "picocolors";
 
-import type { Metadata } from "./engine.js";
+import type { FullMetadata, Metadata } from "./engine.js";
 
 function asNumber(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -12,6 +12,10 @@ function asNumber(value: unknown): number | undefined {
     if (Number.isFinite(n)) return n;
   }
   return undefined;
+}
+
+function defined(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== "";
 }
 
 export function formatExposure(value: unknown): string {
@@ -57,65 +61,156 @@ export function formatGps(metadata: Metadata): string | undefined {
   return text;
 }
 
-/** Build [label, value] rows for the curated summary view. */
-export function summaryRows(metadata: Metadata): [string, string][] {
-  const rows: [string, string][] = [];
-  const add = (label: string, value: unknown) => {
-    if (value !== undefined && value !== null && value !== "") {
-      rows.push([label, String(value)]);
-    }
+const GPS_KEYS = [
+  "GPSLatitude", "GPSLongitude", "GPSAltitude",
+  "GPSLatitudeRef", "GPSLongitudeRef", "GPSAltitudeRef",
+  "GPSPosition", "GPSCoordinates",
+];
+
+// Shutter actuation counters vary by manufacturer (Nikon/Sony/Pentax use
+// ShutterCount; others expose ImageCount or ImageNumber).
+const SHUTTER_COUNT_KEYS = [
+  "ShutterCount", "MechanicalShutterCount", "ImageCount", "ImageNumber",
+];
+
+const SERIAL_KEYS = ["SerialNumber", "InternalSerialNumber", "CameraSerialNumber"];
+
+export interface ReportRows {
+  /** Curated, photographer-relevant rows, most important first. */
+  main: [string, string][];
+  /** Every remaining tag, alphabetical. */
+  other: [string, string][];
+}
+
+/** Build the full report: curated rows first, all remaining tags after. */
+export function fullReportRows(full: FullMetadata): ReportRows {
+  const { pretty: p, numeric: n } = full;
+  const used = new Set<string>(["SourceFile"]);
+  const main: [string, string][] = [];
+
+  const add = (label: string, value: unknown, keys: string[]) => {
+    for (const k of keys) used.add(k);
+    if (defined(value)) main.push([label, String(value)]);
   };
+  const firstPretty = (keys: string[]) => keys.map((k) => p[k]).find(defined);
 
-  add("File", metadata.FileName);
-  add("Type", metadata.FileType);
-  if (metadata.FileSize !== undefined) add("Size", formatSize(metadata.FileSize));
-  const width = asNumber(metadata.ImageWidth);
-  const height = asNumber(metadata.ImageHeight);
-  if (width && height) add("Dimensions", `${width} x ${height}`);
+  // File
+  add("File", p.FileName, ["FileName"]);
+  add("Folder", p.Directory, ["Directory"]);
+  add("Type", p.FileType, ["FileType"]);
+  add("Size", defined(n.FileSize) ? formatSize(n.FileSize) : undefined, ["FileSize"]);
+  const width = asNumber(n.ImageWidth);
+  const height = asNumber(n.ImageHeight);
+  add(
+    "Dimensions",
+    width && height ? `${width} x ${height}` : undefined,
+    ["ImageWidth", "ImageHeight", "ImageSize"],
+  );
+  add("Megapixels", p.Megapixels, ["Megapixels"]);
 
-  const camera = [metadata.Make, metadata.Model].filter(Boolean).join(" ");
-  add("Camera", camera || undefined);
-  add("Lens", metadata.LensModel ?? metadata.LensID);
+  // Camera & lens
+  const camera = [p.Make, p.Model].filter(Boolean).join(" ");
+  add("Camera", camera || undefined, ["Make", "Model"]);
+  add("Serial number", firstPretty(SERIAL_KEYS), SERIAL_KEYS);
+  const shutterCount = SHUTTER_COUNT_KEYS.map((k) => asNumber(n[k])).find(
+    (v) => v !== undefined && v > 0,
+  );
+  add("Shutter count", shutterCount?.toLocaleString("en-US"), SHUTTER_COUNT_KEYS);
+  add("Lens", firstPretty(["LensModel", "LensID", "Lens"]), [
+    "LensModel", "LensID", "Lens",
+  ]);
 
-  add("ISO", metadata.ISO);
-  const fNumber = asNumber(metadata.FNumber);
-  if (fNumber !== undefined) add("Aperture", `f/${fNumber}`);
-  if (metadata.ExposureTime !== undefined) {
-    add("Shutter", formatExposure(metadata.ExposureTime));
+  // Exposure
+  add("ISO", p.ISO, ["ISO"]);
+  const fNumber = asNumber(n.FNumber);
+  add("Aperture", fNumber !== undefined ? `f/${fNumber}` : undefined, ["FNumber"]);
+  add(
+    "Shutter",
+    defined(n.ExposureTime) ? formatExposure(n.ExposureTime) : undefined,
+    ["ExposureTime"],
+  );
+  const focal = asNumber(n.FocalLength);
+  const focal35 = asNumber(n.FocalLengthIn35mmFormat);
+  let focalText: string | undefined;
+  if (focal !== undefined) {
+    focalText = `${focal}mm`;
+    if (focal35 !== undefined && focal35 !== focal) {
+      focalText += `  (${focal35}mm in 35mm equiv.)`;
+    }
   }
-  const focal = asNumber(metadata.FocalLength);
-  if (focal !== undefined) add("Focal length", `${focal}mm`);
+  add("Focal length", focalText, ["FocalLength", "FocalLengthIn35mmFormat"]);
+  const ec = p.ExposureCompensation;
+  add("Exposure comp.", defined(ec) && String(ec) !== "0" ? `${ec} EV` : undefined, [
+    "ExposureCompensation",
+  ]);
+  add("Exposure program", p.ExposureProgram, ["ExposureProgram"]);
+  add("Metering", p.MeteringMode, ["MeteringMode"]);
+  add("Flash", p.Flash, ["Flash"]);
+  add("White balance", p.WhiteBalance, ["WhiteBalance"]);
+  add("Color space", p.ColorSpace, ["ColorSpace"]);
+  add("Orientation", p.Orientation, ["Orientation"]);
 
-  add("Taken (DateTimeOriginal)", metadata.DateTimeOriginal);
-  add("Created (CreateDate)", metadata.CreateDate);
-  add("Modified (ModifyDate)", metadata.ModifyDate);
-  add("File modified", metadata.FileModifyDate);
+  // Authorship
+  add("Artist", p.Artist, ["Artist"]);
+  add("Copyright", p.Copyright, ["Copyright"]);
+  add("Rating", p.Rating, ["Rating"]);
+  add("Software", p.Software, ["Software"]);
 
-  if (metadata.Duration !== undefined) {
-    add("Duration", formatDuration(metadata.Duration));
-  }
+  // Dates
+  add("Taken (DateTimeOriginal)", p.DateTimeOriginal, ["DateTimeOriginal"]);
+  add("Created (CreateDate)", p.CreateDate, ["CreateDate"]);
+  add("Modified (ModifyDate)", p.ModifyDate, ["ModifyDate"]);
+  add("Timezone (OffsetTimeOriginal)", p.OffsetTimeOriginal, ["OffsetTimeOriginal"]);
+  add("File modified", p.FileModifyDate, ["FileModifyDate"]);
 
-  add("GPS", formatGps(metadata) ?? "— none —");
-  return rows;
+  // Video
+  add(
+    "Duration",
+    defined(n.Duration) ? formatDuration(n.Duration) : undefined,
+    ["Duration"],
+  );
+  const fps = asNumber(n.VideoFrameRate);
+  add("Frame rate", fps !== undefined ? `${fps} fps` : undefined, ["VideoFrameRate"]);
+  add("Audio", p.AudioFormat, ["AudioFormat"]);
+
+  // GPS (decimal degrees, ready to paste into a maps app)
+  add("GPS", formatGps(n) ?? "— none —", GPS_KEYS);
+
+  const other: [string, string][] = Object.keys(p)
+    .filter((k) => !used.has(k))
+    .sort()
+    .map((k) => [k, String(p[k])]);
+
+  return { main, other };
 }
 
-export function printSummary(metadata: Metadata): void {
-  console.log(pc.bold(pc.cyan(String(metadata.FileName ?? ""))));
-  const table = new Table({ style: { head: [], border: [] } });
-  for (const [label, value] of summaryRows(metadata)) {
-    table.push([pc.bold(label), value]);
-  }
-  console.log(table.toString());
-}
-
-export function printAllTags(metadata: Metadata): void {
-  console.log(pc.bold(pc.cyan(String(metadata.FileName ?? ""))));
-  const table = new Table({
-    head: [pc.bold("Tag"), pc.bold("Value")],
+function newTable(head?: string[]): Table.Table {
+  return new Table({
+    head,
     style: { head: [], border: [] },
     wordWrap: true,
     colWidths: [32, 60],
   });
+}
+
+export function printFullReport(full: FullMetadata): void {
+  const { main, other } = fullReportRows(full);
+  console.log(pc.bold(pc.cyan(String(full.pretty.FileName ?? ""))));
+  const table = newTable();
+  for (const [label, value] of main) table.push([pc.bold(label), value]);
+  console.log(table.toString());
+
+  if (other.length > 0) {
+    console.log(pc.dim(`All other tags (${other.length}):`));
+    const rest = newTable();
+    for (const [key, value] of other) rest.push([pc.dim(key), pc.dim(value)]);
+    console.log(rest.toString());
+  }
+}
+
+export function printAllTags(metadata: Metadata): void {
+  console.log(pc.bold(pc.cyan(String(metadata.FileName ?? ""))));
+  const table = newTable([pc.bold("Tag"), pc.bold("Value")]);
   for (const key of Object.keys(metadata).sort()) {
     if (key === "SourceFile") continue;
     table.push([key, String(metadata[key])]);
