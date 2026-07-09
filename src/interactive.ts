@@ -12,7 +12,8 @@ import pc from "picocolors";
 
 import * as engine from "./engine.js";
 import * as fields from "./fields.js";
-import { frameFiles, prepareGroups, writeMarkdownReport } from "./cli.js";
+import { frameFiles, prepareGroups, resizeFiles, writeMarkdownReport } from "./cli.js";
+import { parseByteSize, parseFormat } from "./resize.js";
 import { FRAME_COLORS, parseRatio, resolveColor } from "./frame.js";
 import { isVideo } from "./fields.js";
 import {
@@ -359,6 +360,61 @@ async function actionFrame(): Promise<void> {
   });
 }
 
+async function actionResize(): Promise<void> {
+  const all = await askFiles("Resize which photo(s)? (path, folder, or glob)");
+  if (!all) return;
+  const paths = all.filter((p) => !isVideo(p));
+  if (paths.length === 0) {
+    printError("No photos to resize (videos are not supported).");
+    return;
+  }
+  const mode = await select({
+    message: "Resize how?",
+    choices: [
+      { name: "Target file size (e.g. 1mb — best quality that fits)", value: "size" },
+      { name: "Long edge in pixels (e.g. 2048)", value: "long" },
+      { name: "Percentage (e.g. 50)", value: "percent" },
+      { name: "Just convert format / re-encode", value: "convert" },
+    ],
+  });
+
+  let maxBytes: number | undefined;
+  const dims: { long?: number; percent?: number } = {};
+  try {
+    if (mode === "size") {
+      const text = await input({ message: 'Target size (e.g. "1mb", "500kb"):' });
+      if (!text.trim()) return;
+      maxBytes = parseByteSize(text);
+    } else if (mode === "long") {
+      const text = await input({ message: "Long edge in pixels:", default: "2048" });
+      if (!text.trim()) return;
+      dims.long = Number(text);
+    } else if (mode === "percent") {
+      const text = await input({ message: "Scale percentage:", default: "50" });
+      if (!text.trim()) return;
+      dims.percent = Number(text);
+    }
+    const formatChoice = await select({
+      message: "Output format?",
+      choices: [
+        { name: "Keep the same format", value: "keep" },
+        { name: "JPEG", value: "jpeg" },
+        { name: "WebP", value: "webp" },
+        { name: "AVIF", value: "avif" },
+        { name: "PNG", value: "png" },
+      ],
+    });
+    await resizeFiles(paths, {
+      dims,
+      maxBytes,
+      format: formatChoice === "keep" ? undefined : parseFormat(formatChoice),
+      suffix: "resized",
+    });
+  } catch (err) {
+    printError((err as Error).message);
+  }
+}
+
 async function actionUndo(): Promise<void> {
   const answer = (
     await input({
@@ -397,6 +453,7 @@ export async function runInteractive(): Promise<void> {
     organize: actionOrganize,
     rename: actionRename,
     frame: actionFrame,
+    resize: actionResize,
     undo: actionUndo,
   };
 
@@ -415,6 +472,7 @@ export async function runInteractive(): Promise<void> {
           { name: "🗂   Organize into folders", value: "organize" },
           { name: "✏️   Rename by pattern", value: "rename" },
           { name: "🖼   Frame photos (EXIF caption)", value: "frame" },
+          { name: "📐  Resize / convert photos", value: "resize" },
           { name: "↩️   Undo metadata edit (restore backup)", value: "undo" },
           { name: "👋  Quit", value: "quit" },
         ],

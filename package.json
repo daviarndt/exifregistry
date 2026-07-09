@@ -1,6 +1,6 @@
 {
   "name": "exif-kit",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "A friendly command-line toolkit for photographers to inspect and edit photo/video metadata (EXIF, GPS, dates).",
   "keywords": [
     "exif",
@@ -40,6 +40,7 @@
     "@inquirer/prompts": "^7.0.0",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.0",
+    "exif-kit": "^0.7.0",
     "exiftool-vendored": "^30.0.0",
     "picocolors": "^1.1.0",
     "sharp": "^0.35.3"

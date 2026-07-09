@@ -36,6 +36,7 @@ $ exifkit show IMG_4021.CR3
 - 💾 **Ingest** — import memory cards into organized folders with SHA-256 copy verification
 - 🔍 **Dupes** — find byte-identical duplicates before they clutter your library
 - 🖼 **Frame** — re-render photos inside an aesthetic colored frame with their EXIF caption in Space Mono, ready for portfolios and social media (multiple aspect ratios, 21 named colors)
+- 📐 **Resize & convert** — hit an exact file size ("make this 1MB") with the best quality that fits, resize by long edge/percent, convert JPEG/WebP/AVIF/PNG — originals never touched, EXIF preserved
 - 🧭 **Interactive mode** — just run `exifkit` and follow the menus; zero flags to memorize
 - 📦 **Self-contained** — ExifTool is bundled; `npm install` and you're done
 
@@ -153,6 +154,22 @@ exifkit frame --colors                             # see all 21 colors + hex cod
 The caption reads like `CANON EOS R6` / `35mm · f/2.8 · 1/250s · ISO 400`, sized and centered automatically, with text color adapted to the frame. Output is high-resolution JPEG (long edge 3000px by default, `--size` to change; quality 95, 4:4:4), named `photo.framed.jpg`, and **keeps the original photo's EXIF**. Ratios: `1:1`, `4:5`, `9:16`, `3:2`, `16:9`, any `W:H`, or `original`. Margin is tunable with `--margin <pct>`.
 
 Colors include everyday tones (white, off-white, cream, black, charcoal, gray...) and bolder ones (terracotta, sage, navy, burgundy, mustard, dusty-pink...). Space Mono is bundled under the [SIL Open Font License](assets/fonts/OFL.txt).
+
+### Resizing & converting
+
+Every resize writes a **new** file (`photo.resized.jpg`) — the original is never modified — and the output keeps the original's EXIF:
+
+```bash
+exifkit resize photo.jpg --max-size 1mb     # best quality that fits in 1 MB
+exifkit resize *.jpg -s 500kb -o web/       # batch, into a folder
+exifkit resize photo.jpg --long 2048        # long edge to 2048px
+exifkit resize photo.jpg --percent 50       # half size
+exifkit resize photo.jpg -f webp            # convert format (jpeg/webp/avif/png/tiff)
+exifkit resize photo.heic -f jpeg           # HEIC → JPEG (macOS)
+exifkit resize photo.jpg --long 1600 -f webp --suffix web   # photo.web.webp
+```
+
+`--max-size` runs a binary search over encoding quality (mozjpeg) to find the **highest quality that fits** your target — no guessing quality numbers. If even minimum quality can't reach it, dimensions are gently reduced until it does. The success line tells you exactly what happened: `photo.jpg (12.3 MB) → photo.resized.jpg (0.98 MB, 6000x4000, q74)`.
 
 **Pattern placeholders:** `{year}` `{month}` `{day}` `{date}` `{hour}` `{minute}` `{second}` `{time}` `{camera}` `{lens}` `{type}` `{name}` `{ext}` `{city}` `{region}` `{country}` `{counter}` (pad with `{counter:4}`). Dates come from `DateTimeOriginal` (real capture time), falling back to file dates only when the metadata is missing.
 

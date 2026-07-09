@@ -36,6 +36,15 @@ import {
 } from "./frame.js";
 import { defaultExportPath, metadataToMarkdown } from "./markdown.js";
 import {
+  defaultFormatFor,
+  extensionFor,
+  parseByteSize,
+  parseFormat,
+  resizeImage,
+  type DimensionOptions,
+  type OutputFormat,
+} from "./resize.js";
+import {
   executePlan,
   groupWithCompanions,
   journalBatch,
@@ -136,6 +145,69 @@ export async function frameFiles(
         /* metadata copy is best-effort; the render itself succeeded */
       }
       printSuccess(`Framed ${path.basename(source)} → ${out}`);
+    } finally {
+      prepared.cleanup();
+    }
+  }
+}
+
+export interface ResizeRunOptions {
+  dims: DimensionOptions;
+  format?: OutputFormat;
+  quality?: number;
+  maxBytes?: number;
+  outDir?: string;
+  suffix: string;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+/** Resize/convert a batch of photos (shared by CLI and interactive mode). */
+export async function resizeFiles(
+  paths: string[],
+  options: ResizeRunOptions,
+): Promise<void> {
+  for (const source of paths) {
+    const prepared = await prepareSource(source);
+    try {
+      const format =
+        options.format ?? defaultFormatFor(path.extname(source));
+      const result = await resizeImage(prepared.path, options.dims, format, {
+        quality: options.quality,
+        maxBytes: options.maxBytes,
+      });
+
+      const dir = options.outDir ?? path.dirname(source);
+      fs.mkdirSync(dir, { recursive: true });
+      const stem = path.basename(source, path.extname(source));
+      const dotSuffix = options.suffix ? `.${options.suffix}` : "";
+      let out = path.join(dir, `${stem}${dotSuffix}${extensionFor(format)}`);
+      for (let i = 1; fs.existsSync(out) || path.resolve(out) === path.resolve(source); i++) {
+        out = path.join(dir, `${stem}${dotSuffix}_${i}${extensionFor(format)}`);
+      }
+      fs.writeFileSync(out, result.buffer);
+
+      try {
+        // Carry the original EXIF over; pixels are upright, reset Orientation.
+        await engine.applyEdit(
+          [out],
+          { tags: {}, extraArgs: ["-TagsFromFile", source, "-all:all", "-Orientation#=1"] },
+          { backup: false },
+        );
+      } catch {
+        /* metadata copy is best-effort */
+      }
+
+      const before = fs.statSync(source).size;
+      const after = fs.statSync(out).size;
+      printSuccess(
+        `${path.basename(source)} (${formatBytes(before)}) → ` +
+          `${path.basename(out)} (${formatBytes(after)}, ${result.width}x${result.height}` +
+          `${result.quality !== undefined ? `, q${result.quality}` : ""})`,
+      );
     } finally {
       prepared.cleanup();
     }
@@ -629,6 +701,59 @@ export function buildProgram(): Command {
       const paths = resolveFiles(files).filter((p) => !fields.isVideo(p));
       if (paths.length === 0) fail("No photos to frame (videos are not supported).");
       await frameFiles(paths, options);
+    });
+
+  program
+    .command("resize")
+    .description("Resize/convert photos into NEW files (originals are never touched).")
+    .argument("<files...>", "photos (JPEG, PNG, WebP, TIFF, HEIC; RAW uses its preview)")
+    .option("--long <px>", "resize the long edge to this many pixels", parseFloat)
+    .option("--width <px>", "fit within this width", parseFloat)
+    .option("--height <px>", "fit within this height", parseFloat)
+    .option("--percent <n>", "scale by percentage", parseFloat)
+    .option(
+      "-s, --max-size <size>",
+      'target file size, e.g. "1mb" or "500kb" (finds the best quality that fits)',
+    )
+    .option("-f, --format <fmt>", "convert: jpeg, png, webp, avif, tiff (default: keep)")
+    .option("-q, --quality <1-100>", "encoding quality (default 85)", parseFloat)
+    .option("-o, --out <dir>", "output folder (default: next to each photo)")
+    .option("--suffix <text>", "inserted before the extension", "resized")
+    .action(async (files: string[], opts) => {
+      let options: ResizeRunOptions;
+      try {
+        options = {
+          dims: {
+            long: opts.long,
+            width: opts.width,
+            height: opts.height,
+            percent: opts.percent,
+          },
+          format: opts.format ? parseFormat(opts.format) : undefined,
+          quality: opts.quality,
+          maxBytes: opts.maxSize ? parseByteSize(opts.maxSize) : undefined,
+          outDir: opts.out,
+          suffix: opts.suffix,
+        };
+      } catch (err) {
+        fail((err as Error).message);
+      }
+      const hasDims =
+        opts.long !== undefined || opts.width !== undefined ||
+        opts.height !== undefined || opts.percent !== undefined;
+      if (!hasDims && !options.maxBytes && !options.format && opts.quality === undefined) {
+        fail(
+          "Nothing to do. Use --long, --width/--height, --percent, " +
+            "--max-size, --quality or --format.",
+        );
+      }
+      const paths = resolveFiles(files).filter((p) => !fields.isVideo(p));
+      if (paths.length === 0) fail("No photos to resize (videos are not supported).");
+      try {
+        await resizeFiles(paths, options);
+      } catch (err) {
+        fail((err as Error).message);
+      }
     });
 
   program

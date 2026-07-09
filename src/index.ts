@@ -25,3 +25,9 @@ export {
   resolveColor,
 } from "./frame.js";
 export { needsGeolocation, resolvePattern, sanitizeComponent } from "./pattern.js";
+export {
+  computeTargetDims,
+  parseByteSize,
+  parseFormat,
+  resizeImage,
+} from "./resize.js";
