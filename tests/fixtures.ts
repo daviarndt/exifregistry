@@ -24,7 +24,7 @@ export function makeScratchJpeg(name = "photo.jpg"): {
   dir: string;
   file: string;
 } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifkit-test-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifregistry-test-"));
   const file = path.join(dir, name);
   fs.writeFileSync(file, TINY_JPEG);
   return { dir, file };

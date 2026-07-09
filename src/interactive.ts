@@ -1,5 +1,5 @@
 /**
- * Guided interactive mode — what you get when running `exifkit` bare.
+ * Guided interactive mode — what you get when running `exifregistry` bare.
  *
  * Walks the user through each operation with menus and prompts, so no
  * flags need to be memorized. Every action maps 1:1 onto a CLI subcommand.
@@ -281,7 +281,7 @@ async function actionOrganize(): Promise<void> {
   journalBatch(destRoot, "organize", done, copy);
   printSuccess(
     `${done.length} file(s) ${copy ? "copied" : "moved"}. ` +
-      "Undo with: exifkit organize --undo" +
+      "Undo with: exifregistry organize --undo" +
       (destRoot === "." ? "" : ` --to ${destRoot}`),
   );
 }
@@ -450,7 +450,7 @@ async function actionUndo(): Promise<void> {
 
 export async function runInteractive(): Promise<void> {
   console.log(
-    `${pc.bold(pc.cyan("exif-kit"))} — photo & video metadata toolkit`,
+    `${pc.bold(pc.cyan("exifregistry"))} — photo & video metadata toolkit`,
   );
   console.log(pc.dim("Ctrl+C or 'Quit' to leave at any time.\n"));
 

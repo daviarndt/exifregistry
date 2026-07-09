@@ -1,6 +1,6 @@
 {
-  "name": "exif-kit",
-  "version": "0.9.0",
+  "name": "exifregistry",
+  "version": "1.0.0",
   "description": "A friendly command-line toolkit for photographers to inspect and edit photo/video metadata (EXIF, GPS, dates).",
   "keywords": [
     "exif",
@@ -10,17 +10,17 @@
     "exiftool",
     "cli"
   ],
-  "homepage": "https://github.com/daviarndt/exif-kit#readme",
-  "bugs": "https://github.com/daviarndt/exif-kit/issues",
+  "homepage": "https://github.com/daviarndt/exifregistry#readme",
+  "bugs": "https://github.com/daviarndt/exifregistry/issues",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/daviarndt/exif-kit.git"
+    "url": "git+https://github.com/daviarndt/exifregistry.git"
   },
   "license": "MIT",
   "author": "Davi Arndt",
   "type": "module",
   "bin": {
-    "exifkit": "dist/bin.js"
+    "exifregistry": "dist/bin.js"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -40,7 +40,6 @@
     "@inquirer/prompts": "^7.0.0",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.0",
-    "exif-kit": "^0.7.0",
     "exiftool-vendored": "^30.0.0",
     "picocolors": "^1.1.0",
     "sharp": "^0.35.3"

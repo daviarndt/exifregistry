@@ -1,5 +1,5 @@
 /**
- * `exifkit frame`: re-render photos inside an aesthetic colored frame with
+ * `exifregistry frame`: re-render photos inside an aesthetic colored frame with
  * their EXIF caption, ready for portfolios and social media.
  *
  * Rendering is done by sharp (libvips): high-quality Lanczos resampling,
@@ -64,7 +64,7 @@ export function resolveColor(input: string): FrameColor {
     `Unknown color "${input}". Pick one of: ` +
       FRAME_COLORS.map((c) => c.name).join(", ") +
       " — or pass a hex value like \"#AABBCC\". " +
-      "(See them all with: exifkit frame --colors)",
+      "(See them all with: exifregistry frame --colors)",
   );
 }
 
@@ -276,7 +276,7 @@ const FONT_BOLD = path.join(ASSETS_DIR, "fonts", "SpaceMono-Bold.ttf");
 /** Point fontconfig at a minimal config so libvips doesn't warn on macOS. */
 function ensureFontconfig(): void {
   if (process.env.FONTCONFIG_FILE || process.env.FONTCONFIG_PATH) return;
-  const dir = path.join(os.tmpdir(), "exifkit-fontconfig");
+  const dir = path.join(os.tmpdir(), "exifregistry-fontconfig");
   fs.mkdirSync(path.join(dir, "cache"), { recursive: true });
   const conf = path.join(dir, "fonts.conf");
   fs.writeFileSync(
@@ -330,7 +330,7 @@ export async function prepareSource(
   const none = { path: file, cleanup: () => {} };
 
   if (isRaw(file)) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifkit-frame-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifregistry-frame-"));
     const preview = path.join(dir, "preview.jpg");
     const engine = await import("./engine.js");
     await engine.extractRawPreview(file, preview);
@@ -338,7 +338,7 @@ export async function prepareSource(
   }
 
   if ((ext === ".heic" || ext === ".heif") && process.platform === "darwin") {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifkit-frame-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifregistry-frame-"));
     const jpeg = path.join(dir, "converted.jpg");
     const { execFileSync } = await import("node:child_process");
     execFileSync("sips", [

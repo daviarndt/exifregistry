@@ -1,4 +1,4 @@
-/** Public API of exif-kit (usable as a library, not just a CLI). */
+/** Public API of exifregistry (usable as a library, not just a CLI). */
 
 export * as engine from "./engine.js";
 export * as fields from "./fields.js";

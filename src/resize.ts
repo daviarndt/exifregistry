@@ -1,5 +1,5 @@
 /**
- * `exifkit resize`: resize and convert photos into NEW files.
+ * `exifregistry resize`: resize and convert photos into NEW files.
  *
  * Non-destructive by design: the original is never modified, the output is
  * a separate file (collision-safe name), and the original's EXIF is copied

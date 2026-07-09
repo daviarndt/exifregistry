@@ -14,7 +14,7 @@ afterAll(async () => {
 function run(args: string[]): Promise<void> {
   const program = buildProgram();
   program.exitOverride(); // throw instead of process.exit on --help/--version
-  return program.parseAsync(["node", "exifkit", ...args]) as unknown as Promise<void>;
+  return program.parseAsync(["node", "exifregistry", ...args]) as unknown as Promise<void>;
 }
 
 describe("cli", () => {
@@ -88,7 +88,7 @@ describe("cli", () => {
       errors.push(String(line));
     });
     try {
-      await main(["node", "exifkit", "show", "does-not-exist.jpg"]);
+      await main(["node", "exifregistry", "show", "does-not-exist.jpg"]);
     } finally {
       spy.mockRestore();
     }

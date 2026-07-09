@@ -17,7 +17,7 @@ import {
 import { findDupes } from "../src/dupes.js";
 
 function scratchDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "exifkit-org-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "exifregistry-org-"));
 }
 
 function touch(dir: string, name: string, content = name): string {

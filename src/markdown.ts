@@ -25,7 +25,7 @@ function table(rows: [string, string][], header: [string, string]): string[] {
 }
 
 export interface MarkdownOptions {
-  /** exif-kit version stamped in the report footer. */
+  /** exifregistry version stamped in the report footer. */
   version?: string;
   /** Generation timestamp (defaults to now). */
   date?: Date;
@@ -38,7 +38,7 @@ export function metadataToMarkdown(
 ): string {
   const date = options.date ?? new Date();
   const stamp = date.toISOString().slice(0, 16).replace("T", " ") + " UTC";
-  const tool = options.version ? `exif-kit v${options.version}` : "exif-kit";
+  const tool = options.version ? `exifregistry v${options.version}` : "exifregistry";
 
   const lines: string[] = ["# Metadata report", ""];
   for (const report of reports) {

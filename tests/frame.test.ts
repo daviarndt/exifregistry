@@ -161,7 +161,7 @@ describe("buildCaption", () => {
 
 describe("full-size rendering", () => {
   it("keeps the photo at native resolution with size: full", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifkit-frame-full-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifregistry-frame-full-"));
     const src = path.join(dir, "photo.png");
     await sharp({
       create: { width: 640, height: 480, channels: 3, background: "#101010" },
@@ -184,7 +184,7 @@ describe("full-size rendering", () => {
 
 describe("renderFrame (integration)", () => {
   it("renders the frame color, ratio and caption", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifkit-frame-test-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifregistry-frame-test-"));
     const src = path.join(dir, "photo.png");
     // black 200x100 source photo
     await sharp({

@@ -78,7 +78,7 @@ describe("resizeImage (integration)", () => {
   }
 
   it("hits a target file size with the best quality that fits", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifkit-resize-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifregistry-resize-"));
     const source = await noisyJpeg(dir);
     const originalSize = fs.statSync(source).size;
     const target = 200 * 1024;
@@ -90,7 +90,7 @@ describe("resizeImage (integration)", () => {
   }, 60000);
 
   it("resizes by long edge and converts format", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifkit-resize-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifregistry-resize-"));
     const source = await noisyJpeg(dir);
     const result = await resizeImage(source, { long: 800 }, "webp", { quality: 80 });
     const meta = await sharp(result.buffer).metadata();
@@ -99,7 +99,7 @@ describe("resizeImage (integration)", () => {
   }, 60000);
 
   it("refuses --max-size for png", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifkit-resize-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifregistry-resize-"));
     const source = await noisyJpeg(dir);
     await expect(
       resizeImage(source, {}, "png", { maxBytes: 100 * 1024 }),

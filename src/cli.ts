@@ -1,7 +1,7 @@
 /**
- * Command-line interface for exif-kit.
+ * Command-line interface for exifregistry.
  *
- * Running `exifkit` with no arguments opens the interactive guided mode;
+ * Running `exifregistry` with no arguments opens the interactive guided mode;
  * subcommands offer the same operations for direct/scripted use.
  */
 
@@ -268,7 +268,7 @@ async function runMovePlan(
   journalBatch(opts.journalRoot, command, done, opts.copy ?? false);
   printSuccess(
     `${done.length} file(s) ${opts.copy ? "copied" : command === "rename" ? "renamed" : "moved"}. ` +
-      `Undo with: exifkit ${command} --undo${command === "rename" ? " <folder>" : ""}`,
+      `Undo with: exifregistry ${command} --undo${command === "rename" ? " <folder>" : ""}`,
   );
 }
 
@@ -298,31 +298,31 @@ async function applyGroupedGps(
 export function buildProgram(): Command {
   const program = new Command();
   program
-    .name("exifkit")
+    .name("exifregistry")
     .description(
       "Photo & video toolkit: inspect/edit metadata (EXIF, GPS, dates), " +
         "organize files, frame and resize photos.\n" +
-        "Run bare `exifkit` for the interactive guided mode.",
+        "Run bare `exifregistry` for the interactive guided mode.",
     )
-    .version(`exif-kit ${VERSION}`, "-V, --version")
+    .version(`exifregistry ${VERSION}`, "-V, --version")
     .addHelpText(
       "after",
       `
 Examples:
-  $ exifkit                                           interactive mode (menus)
-  $ exifkit show photo.jpg                            key metadata (add -v for all tags)
-  $ exifkit gps *.jpg --coords "-23.5505, -46.6333"   set GPS (paste from a maps app)
-  $ exifkit date *.jpg --shift "+2h"                  fix a wrong camera clock
-  $ exifkit organize card/ --to ~/Photos --by "{year}/{date}" --apply
-  $ exifkit rename . -p "trip_{counter:3}" --apply    rename in shooting order
-  $ exifkit ingest /Volumes/SD --to ~/Photos --verify --apply
-  $ exifkit frame photo.jpg -c off-white --ratio 4:5  aesthetic EXIF frame
-  $ exifkit resize photo.jpg --max-size 1mb           best quality under 1 MB
-  $ exifkit undo photo.jpg                            restore a metadata backup
+  $ exifregistry                                           interactive mode (menus)
+  $ exifregistry show photo.jpg                            key metadata (add -v for all tags)
+  $ exifregistry gps *.jpg --coords "-23.5505, -46.6333"   set GPS (paste from a maps app)
+  $ exifregistry date *.jpg --shift "+2h"                  fix a wrong camera clock
+  $ exifregistry organize card/ --to ~/Photos --by "{year}/{date}" --apply
+  $ exifregistry rename . -p "trip_{counter:3}" --apply    rename in shooting order
+  $ exifregistry ingest /Volumes/SD --to ~/Photos --verify --apply
+  $ exifregistry frame photo.jpg -c off-white --ratio 4:5  aesthetic EXIF frame
+  $ exifregistry resize photo.jpg --max-size 1mb           best quality under 1 MB
+  $ exifregistry undo photo.jpg                            restore a metadata backup
 
-Run "exifkit <command> --help" for all options of a command.
+Run "exifregistry <command> --help" for all options of a command.
 File operations preview a plan first; add --apply to execute. Edits keep
-backups by default. Full docs: https://github.com/daviarndt/exif-kit`,
+backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
     )
     .action(async () => {
       const { runInteractive } = await import("./interactive.js");
@@ -541,7 +541,7 @@ backups by default. Full docs: https://github.com/daviarndt/exif-kit`,
         return;
       }
       if (paths.length === 0) {
-        fail("Tell me what to organize, e.g.: exifkit organize ~/Downloads/card --to ~/Photos");
+        fail("Tell me what to organize, e.g.: exifregistry organize ~/Downloads/card --to ~/Photos");
       }
       const files = resolveFiles(paths, opts.recursive);
       const { groups, metadataByPrimary } = await prepareGroups(files, opts.by);
@@ -579,7 +579,7 @@ backups by default. Full docs: https://github.com/daviarndt/exif-kit`,
         return;
       }
       if (files.length === 0) {
-        fail('Tell me what to rename, e.g.: exifkit rename *.CR3 -p "{date}_{counter:3}"');
+        fail('Tell me what to rename, e.g.: exifregistry rename *.CR3 -p "{date}_{counter:3}"');
       }
       const paths = resolveFiles(files, opts.recursive);
       const { groups, metadataByPrimary } = await prepareGroups(paths, opts.pattern);
@@ -725,7 +725,7 @@ backups by default. Full docs: https://github.com/daviarndt/exif-kit`,
         return;
       }
       if (files.length === 0) {
-        fail('Tell me what to frame, e.g.: exifkit frame photo.jpg -c off-white --ratio 4:5');
+        fail('Tell me what to frame, e.g.: exifregistry frame photo.jpg -c off-white --ratio 4:5');
       }
       let options: FrameRunOptions;
       try {
@@ -809,9 +809,9 @@ backups by default. Full docs: https://github.com/daviarndt/exif-kit`,
 
   program
     .command("doctor")
-    .description("Check that exif-kit is healthy.")
+    .description("Check that exifregistry is healthy.")
     .action(async () => {
-      console.log(`exif-kit ${VERSION}`);
+      console.log(`exifregistry ${VERSION}`);
       const version = await engine.exiftoolVersion();
       printSuccess(`Bundled ExifTool ${version} is working.`);
       console.log("Everything looks good.");
