@@ -223,11 +223,34 @@ export function printAllTags(metadata: Metadata): void {
   console.log(table.toString());
 }
 
+// ---------------------------------------------------------------------------
+// Progress (single-line bar for batch operations; TTY only)
+
+let progressActive = false;
+
+export function showProgress(current: number, total: number, label: string): void {
+  if (!process.stdout.isTTY || total < 2) return;
+  const width = 22;
+  const filled = Math.min(width, Math.round(((current - 1) / total) * width));
+  const bar = "█".repeat(filled) + "░".repeat(width - filled);
+  const line = `  ${bar} ${current}/${total}  ${label}`;
+  process.stdout.write(`\r${line.slice(0, 96).padEnd(96)}`);
+  progressActive = true;
+}
+
+export function clearProgress(): void {
+  if (!progressActive) return;
+  process.stdout.write(`\r${" ".repeat(96)}\r`);
+  progressActive = false;
+}
+
 export function printSuccess(message: string): void {
+  clearProgress();
   console.log(`${pc.green(pc.bold("✓"))} ${message}`);
 }
 
 export function printError(message: string): void {
+  clearProgress();
   console.error(pc.red(message));
 }
 

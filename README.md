@@ -151,7 +151,7 @@ exifkit frame trip/ -c cream -o framed/            # whole folders, custom outpu
 exifkit frame --colors                             # see all 21 colors + hex codes
 ```
 
-The caption reads like `CANON EOS R6` / `35mm · f/2.8 · 1/250s · ISO 400`, sized and centered automatically, with text color adapted to the frame. Output is high-resolution JPEG (long edge 3000px by default, `--size` to change; quality 95, 4:4:4), named `photo.framed.jpg`, and **keeps the original photo's EXIF**. Ratios: `1:1`, `4:5`, `9:16`, `3:2`, `16:9`, any `W:H`, or `original`. Margin is tunable with `--margin <pct>`.
+The caption reads like `35mm · f/2.8 · 1/250s · ISO 400`, sized and centered automatically, with text color adapted to the frame; add `--camera` to include the camera model above it. Output is high-resolution JPEG (long edge 3000px by default; `--size full` keeps the photo at its **native resolution**, `--quality` up to 100), named `photo.framed.jpg`, and **keeps the original photo's EXIF**. Ratios: `1:1`, `4:5`, `9:16`, `3:2`, `16:9`, any `W:H`, or `original`. Margin is tunable with `--margin <pct>`.
 
 Colors include everyday tones (white, off-white, cream, black, charcoal, gray...) and bolder ones (terracotta, sage, navy, burgundy, mustard, dusty-pink...). Space Mono is bundled under the [SIL Open Font License](assets/fonts/OFL.txt).
 

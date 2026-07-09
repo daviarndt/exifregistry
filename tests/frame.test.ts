@@ -125,29 +125,61 @@ describe("computeLayout", () => {
 });
 
 describe("buildCaption", () => {
-  it("builds title and exposure details", () => {
-    const caption = buildCaption(
-      {
-        Model: "Canon EOS R6",
-        FocalLength: 35,
-        FNumber: 2.8,
-        ExposureTime: 0.004,
-        ISO: 400,
-      },
-      "/x/IMG_1.CR3",
-    );
-    expect(caption.title).toBe("CANON EOS R6");
+  const meta = {
+    Model: "Canon EOS R6",
+    FocalLength: 35,
+    FNumber: 2.8,
+    ExposureTime: 0.004,
+    ISO: 400,
+  };
+
+  it("omits the camera by default (exposure only)", () => {
+    const caption = buildCaption(meta, "/x/IMG_1.CR3");
+    expect(caption.title).toBe("");
     expect(caption.details).toBe("35mm  ·  f/2.8  ·  1/250s  ·  ISO 400");
   });
 
-  it("falls back to the original file name and date", () => {
+  it("includes the camera only when explicitly requested", () => {
+    const caption = buildCaption(meta, "/x/IMG_1.CR3", true);
+    expect(caption.title).toBe("CANON EOS R6");
+  });
+
+  it("camera flag without a Model tag yields no title", () => {
+    const caption = buildCaption({ ISO: 100 }, "/x/a.jpg", true);
+    expect(caption.title).toBe("");
+    expect(caption.details).toBe("ISO 100");
+  });
+
+  it("falls back to the capture date when there is no exposure data", () => {
     const caption = buildCaption(
       { FileName: "IMG_9.png", DateTimeOriginal: "2026:07:05 10:00:00" },
       "/tmp/preview.jpg",
     );
-    expect(caption.title).toBe("IMG_9");
     expect(caption.details).toBe("2026.07.05");
   });
+});
+
+describe("full-size rendering", () => {
+  it("keeps the photo at native resolution with size: full", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifkit-frame-full-"));
+    const src = path.join(dir, "photo.png");
+    await sharp({
+      create: { width: 640, height: 480, channels: 3, background: "#101010" },
+    }).png().toFile(src);
+
+    const out = path.join(dir, "framed.jpg");
+    await renderFrame(src, {}, out, {
+      color: { name: "white", hex: "#FFFFFF" },
+      ratio: null,
+      caption: "none",
+      marginPct: 5,
+      size: "full",
+    });
+    const meta = await sharp(out).metadata();
+    // photo keeps 640px wide; canvas adds ~5% margins on each side
+    expect(meta.width!).toBeGreaterThanOrEqual(640 + 2 * Math.floor(0.05 * 640));
+    expect(meta.width!).toBeLessThan(640 * 1.25);
+  }, 30000);
 });
 
 describe("renderFrame (integration)", () => {

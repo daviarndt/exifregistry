@@ -15,6 +15,7 @@ import { Command } from "commander";
 import * as engine from "./engine.js";
 import * as fields from "./fields.js";
 import {
+  clearProgress,
   describeFiles,
   printAllTags,
   printDryRunHint,
@@ -22,6 +23,7 @@ import {
   printFullReport,
   printPlan,
   printSuccess,
+  showProgress,
 } from "./display.js";
 import { findDupes } from "./dupes.js";
 import {
@@ -98,7 +100,9 @@ export interface FrameRunOptions {
   ratio: Ratio | null;
   caption: CaptionPosition;
   marginPct: number;
-  size: number;
+  size: number | "full";
+  quality?: number;
+  showCamera?: boolean;
   outDir?: string;
 }
 
@@ -129,6 +133,7 @@ export async function frameFiles(
   const metadata = await engine.read(paths);
   for (let i = 0; i < paths.length; i++) {
     const source = paths[i];
+    showProgress(i + 1, paths.length, path.basename(source));
     const prepared = await prepareSource(source);
     try {
       const out = reserveFrameOutput(source, options.outDir);
@@ -170,7 +175,9 @@ export async function resizeFiles(
   paths: string[],
   options: ResizeRunOptions,
 ): Promise<void> {
-  for (const source of paths) {
+  for (let i = 0; i < paths.length; i++) {
+    const source = paths[i];
+    showProgress(i + 1, paths.length, path.basename(source));
     const prepared = await prepareSource(source);
     try {
       const format =
@@ -251,7 +258,13 @@ async function runMovePlan(
     printDryRunHint();
     return;
   }
-  const done = await executePlan(ops, { copy: opts.copy, verify: opts.verify });
+  const done = await executePlan(ops, {
+    copy: opts.copy,
+    verify: opts.verify,
+    onProgress: (current, total, op) =>
+      showProgress(current, total, path.basename(op.source)),
+  });
+  clearProgress();
   journalBatch(opts.journalRoot, command, done, opts.copy ?? false);
   printSuccess(
     `${done.length} file(s) ${opts.copy ? "copied" : command === "rename" ? "renamed" : "moved"}. ` +
@@ -286,8 +299,31 @@ export function buildProgram(): Command {
   const program = new Command();
   program
     .name("exifkit")
-    .description("Inspect and edit photo/video metadata (EXIF, GPS, dates).")
+    .description(
+      "Photo & video toolkit: inspect/edit metadata (EXIF, GPS, dates), " +
+        "organize files, frame and resize photos.\n" +
+        "Run bare `exifkit` for the interactive guided mode.",
+    )
     .version(`exif-kit ${VERSION}`, "-V, --version")
+    .addHelpText(
+      "after",
+      `
+Examples:
+  $ exifkit                                           interactive mode (menus)
+  $ exifkit show photo.jpg                            key metadata (add -v for all tags)
+  $ exifkit gps *.jpg --coords "-23.5505, -46.6333"   set GPS (paste from a maps app)
+  $ exifkit date *.jpg --shift "+2h"                  fix a wrong camera clock
+  $ exifkit organize card/ --to ~/Photos --by "{year}/{date}" --apply
+  $ exifkit rename . -p "trip_{counter:3}" --apply    rename in shooting order
+  $ exifkit ingest /Volumes/SD --to ~/Photos --verify --apply
+  $ exifkit frame photo.jpg -c off-white --ratio 4:5  aesthetic EXIF frame
+  $ exifkit resize photo.jpg --max-size 1mb           best quality under 1 MB
+  $ exifkit undo photo.jpg                            restore a metadata backup
+
+Run "exifkit <command> --help" for all options of a command.
+File operations preview a plan first; add --apply to execute. Edits keep
+backups by default. Full docs: https://github.com/daviarndt/exif-kit`,
+    )
     .action(async () => {
       const { runInteractive } = await import("./interactive.js");
       await runInteractive();
@@ -625,7 +661,10 @@ export function buildProgram(): Command {
     .option("--apply", "with --delete: actually delete (there is NO undo for this)")
     .action(async (paths: string[], opts) => {
       const files = resolveFiles(paths, opts.recursive);
-      const groups = await findDupes(files);
+      const groups = await findDupes(files, (current, total, file) =>
+        showProgress(current, total, path.basename(file)),
+      );
+      clearProgress();
       if (groups.length === 0) {
         printSuccess("No duplicates found.");
         return;
@@ -665,8 +704,14 @@ export function buildProgram(): Command {
     .option("-c, --color <color>", 'frame color by name (or "#RRGGBB")', "white")
     .option("--ratio <ratio>", '"1:1", "4:5", "9:16", "3:2"... or "original"', "original")
     .option("--caption <position>", "EXIF caption: bottom, top or none", "bottom")
+    .option("--camera", "include the camera model in the caption")
     .option("--margin <percent>", "margin around the photo (% of frame)", "6")
-    .option("--size <pixels>", "long edge of the final render", "3000")
+    .option(
+      "--size <pixels|full>",
+      'long edge of the final render; "full" keeps the photo at native resolution',
+      "3000",
+    )
+    .option("-q, --quality <1-100>", "JPEG quality of the render", "95")
     .option("-o, --out <dir>", "output folder (default: next to each photo)")
     .option("--colors", "list all frame colors with their hex codes")
     .action(async (files: string[], opts) => {
@@ -689,14 +734,20 @@ export function buildProgram(): Command {
           ratio: parseRatio(opts.ratio),
           caption: parseCaptionPosition(opts.caption),
           marginPct: Number(opts.margin),
-          size: Number(opts.size),
+          size: opts.size === "full" ? "full" : Number(opts.size),
+          quality: Number(opts.quality),
+          showCamera: Boolean(opts.camera),
           outDir: opts.out,
         };
       } catch (err) {
         fail((err as Error).message);
       }
-      if (!Number.isFinite(options.marginPct) || !Number.isFinite(options.size)) {
-        fail("--margin and --size must be numbers.");
+      if (
+        !Number.isFinite(options.marginPct) ||
+        (options.size !== "full" && !Number.isFinite(options.size)) ||
+        !Number.isFinite(options.quality)
+      ) {
+        fail('--margin and --quality must be numbers; --size a number or "full".');
       }
       const paths = resolveFiles(files).filter((p) => !fields.isVideo(p));
       if (paths.length === 0) fail("No photos to frame (videos are not supported).");

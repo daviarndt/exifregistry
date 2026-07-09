@@ -14,7 +14,10 @@ export interface DupeGroup {
   files: string[];
 }
 
-export async function findDupes(files: string[]): Promise<DupeGroup[]> {
+export async function findDupes(
+  files: string[],
+  onProgress?: (current: number, total: number, file: string) => void,
+): Promise<DupeGroup[]> {
   const bySize = new Map<number, string[]>();
   for (const file of files) {
     const stat = fs.statSync(file, { throwIfNoEntry: false });
@@ -24,11 +27,17 @@ export async function findDupes(files: string[]): Promise<DupeGroup[]> {
     bySize.set(stat.size, list);
   }
 
+  const toHash = [...bySize.values()]
+    .filter((c) => c.length > 1)
+    .reduce((n, c) => n + c.length, 0);
+  let hashed = 0;
+
   const groups: DupeGroup[] = [];
   for (const [size, candidates] of bySize) {
     if (candidates.length < 2) continue;
     const byHash = new Map<string, string[]>();
     for (const file of candidates) {
+      onProgress?.(++hashed, toHash, file);
       const hash = await sha256(file);
       const list = byHash.get(hash) ?? [];
       list.push(file);

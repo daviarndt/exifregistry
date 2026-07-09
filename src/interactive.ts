@@ -351,12 +351,23 @@ async function actionFrame(): Promise<void> {
       { name: "No caption", value: "none" as const },
     ],
   });
+  const showCamera =
+    caption !== "none" &&
+    (await confirm({
+      message: "Include the camera model in the caption?",
+      default: false,
+    }));
+  const fullRes = await confirm({
+    message: "Keep the photo at native resolution? (No = 3000px long edge)",
+    default: false,
+  });
   await frameFiles(paths, {
     color: resolveColor(colorName),
     ratio: parseRatio(ratioText),
     caption,
+    showCamera,
     marginPct: 6,
-    size: 3000,
+    size: fullRes ? "full" : 3000,
   });
 }
 

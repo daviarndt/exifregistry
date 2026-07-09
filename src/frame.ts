@@ -165,22 +165,23 @@ export function computeLayout(input: LayoutInput): FrameLayout {
     margin = Math.round((marginPct / 100) * Math.min(canvasW, canvasH));
   } else {
     margin = Math.round((marginPct / 100) * size);
+    const gapHalf = Math.round(margin / 2);
     const photoLong = Math.max(50, size - 2 * margin);
     const scale = photoLong / Math.max(imgW, imgH);
     const w = Math.round(imgW * scale);
     const h = Math.round(imgH * scale);
     canvasW = w + 2 * margin;
-    canvasH = h + 2 * margin + (captionBlock ? captionBlock + margin / 2 : 0);
-    const top = margin + (caption === "top" ? captionBlock + margin / 2 : 0);
+    canvasH = h + 2 * margin + (captionBlock ? captionBlock + gapHalf : 0);
+    const top = margin + (caption === "top" ? captionBlock + gapHalf : 0);
     return {
       canvasW,
       canvasH,
-      photo: { left: margin, top: Math.round(top), width: w, height: h },
+      photo: { left: margin, top, width: w, height: h },
       captionRegion:
         caption === "none"
           ? undefined
           : {
-              top: caption === "top" ? margin : Math.round(top + h + margin / 2),
+              top: caption === "top" ? margin : top + h + gapHalf,
               height: captionBlock,
               maxWidth: w,
             },
@@ -228,14 +229,17 @@ export interface Caption {
   details: string;
 }
 
-/** Build the caption from metadata: camera on top, exposure recipe below. */
-export function buildCaption(metadata: Metadata, file: string): Caption {
+/**
+ * Build the caption from metadata: the exposure recipe, plus the camera
+ * model on top — but only when explicitly requested (`includeCamera`).
+ */
+export function buildCaption(
+  metadata: Metadata,
+  file: string,
+  includeCamera = false,
+): Caption {
   const model = metadata.Model ?? metadata.Make;
-  const fromFileName =
-    typeof metadata.FileName === "string"
-      ? metadata.FileName.replace(/\.[^.]+$/, "")
-      : path.basename(file, path.extname(file));
-  const title = String(model ?? fromFileName).trim().toUpperCase();
+  const title = includeCamera && model ? String(model).trim().toUpperCase() : "";
 
   const parts: string[] = [];
   const num = (v: unknown) => (typeof v === "number" ? v : Number(v));
@@ -351,7 +355,12 @@ export interface FrameOptions {
   ratio: Ratio | null;
   caption: CaptionPosition;
   marginPct: number;
-  size: number;
+  /** Long edge of the final canvas, or "full" to keep the photo at native resolution. */
+  size: number | "full";
+  /** Show the camera model above the exposure line (opt-in). */
+  showCamera?: boolean;
+  /** JPEG quality of the render (default 95). */
+  quality?: number;
 }
 
 /**
@@ -376,13 +385,30 @@ export async function renderFrame(
   const imgW = rotated ? meta.height : meta.width;
   const imgH = rotated ? meta.width : meta.height;
 
+  // "full": find the canvas size at which the photo keeps its native
+  // resolution. Layout scales linearly with size, so probe once and scale.
+  let size: number;
+  if (options.size === "full") {
+    const probe = computeLayout({
+      imgW, imgH,
+      ratio: options.ratio,
+      marginPct: options.marginPct,
+      caption: options.caption,
+      size: 1000,
+    });
+    const scale = Math.max(imgW / probe.photo.width, imgH / probe.photo.height);
+    size = Math.ceil(1000 * scale);
+  } else {
+    size = options.size;
+  }
+
   const layout = computeLayout({
     imgW,
     imgH,
     ratio: options.ratio,
     marginPct: options.marginPct,
     caption: options.caption,
-    size: options.size,
+    size,
   });
 
   const photo = await image
@@ -394,7 +420,7 @@ export async function renderFrame(
   ];
 
   if (layout.captionRegion) {
-    const caption = buildCaption(metadata, prepared);
+    const caption = buildCaption(metadata, prepared, options.showCamera);
     const color = captionColorFor(options.color.hex);
     const region = layout.captionRegion;
     const title = await renderText(
@@ -428,6 +454,6 @@ export async function renderFrame(
     },
   })
     .composite(composites)
-    .jpeg({ quality: 95, chromaSubsampling: "4:4:4" })
+    .jpeg({ quality: options.quality ?? 95, chromaSubsampling: "4:4:4" })
     .toFile(out);
 }

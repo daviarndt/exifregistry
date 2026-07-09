@@ -1,6 +1,6 @@
 {
   "name": "exif-kit",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "A friendly command-line toolkit for photographers to inspect and edit photo/video metadata (EXIF, GPS, dates).",
   "keywords": [
     "exif",
