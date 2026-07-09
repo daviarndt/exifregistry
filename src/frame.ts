@@ -11,6 +11,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import * as opentype from "opentype.js";
 import sharp from "sharp";
 import type { OverlayOptions } from "sharp";
 
@@ -273,29 +274,29 @@ const ASSETS_DIR = path.join(
 const FONT_REGULAR = path.join(ASSETS_DIR, "fonts", "SpaceMono-Regular.ttf");
 const FONT_BOLD = path.join(ASSETS_DIR, "fonts", "SpaceMono-Bold.ttf");
 
-/** Point fontconfig at a minimal config so libvips doesn't warn on macOS. */
-function ensureFontconfig(): void {
-  if (process.env.FONTCONFIG_FILE || process.env.FONTCONFIG_PATH) return;
-  const dir = path.join(os.tmpdir(), "exifregistry-fontconfig");
-  fs.mkdirSync(path.join(dir, "cache"), { recursive: true });
-  const conf = path.join(dir, "fonts.conf");
-  fs.writeFileSync(
-    conf,
-    `<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "fonts.dtd">\n<fontconfig>\n` +
-      `  <dir>${path.join(ASSETS_DIR, "fonts")}</dir>\n` +
-      `  <cachedir>${path.join(dir, "cache")}</cachedir>\n</fontconfig>\n`,
-  );
-  process.env.FONTCONFIG_FILE = conf;
+// Caption text is rendered as SVG vector paths straight from the bundled
+// TTFs (opentype.js). This is deliberate: sharp's Pango/fontconfig ignores
+// per-file fonts on macOS prebuilds, silently falling back to a proportional
+// font unless Space Mono happens to be installed system-wide. Vector paths
+// are deterministic on every platform. Do not switch back to Pango text.
+const fontCache = new Map<string, opentype.Font>();
+
+function loadFont(bold: boolean): opentype.Font {
+  const file = bold ? FONT_BOLD : FONT_REGULAR;
+  let font = fontCache.get(file);
+  if (!font) {
+    const buf = fs.readFileSync(file);
+    font = opentype.parse(
+      buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+    );
+    fontCache.set(file, font);
+  }
+  return font;
 }
 
-function escapePango(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+const LETTER_SPACING = 0.02; // em — subtle tracking, matches the brand look
 
-async function renderText(
+export async function renderText(
   text: string,
   sizePx: number,
   color: string,
@@ -303,16 +304,27 @@ async function renderText(
   maxWidth: number,
 ): Promise<{ data: Buffer; width: number; height: number } | undefined> {
   if (!text) return undefined;
-  const markup = `<span foreground="${color}" letter_spacing="1024">${escapePango(text)}</span>`;
-  const { data, info } = await sharp({
-    text: {
-      text: markup,
-      font: `Space Mono${bold ? " Bold" : ""} ${sizePx}`,
-      fontfile: bold ? FONT_BOLD : FONT_REGULAR,
-      width: maxWidth,
-      rgba: true,
-    },
-  })
+  const font = loadFont(bold);
+  const options = { kerning: true, letterSpacing: LETTER_SPACING };
+
+  // Shrink to fit rather than wrap: captions read better on one line.
+  let size = sizePx;
+  let width = font.getAdvanceWidth(text, size, options);
+  if (width > maxWidth) {
+    size = (size * maxWidth) / width;
+    width = font.getAdvanceWidth(text, size, options);
+  }
+
+  const ascent = (font.ascender / font.unitsPerEm) * size;
+  const descent = (-font.descender / font.unitsPerEm) * size;
+  const w = Math.max(1, Math.ceil(width));
+  const h = Math.max(1, Math.ceil(ascent + descent));
+  const d = font.getPath(text, 0, ascent, size, options).toPathData(2);
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" ` +
+    `viewBox="0 0 ${w} ${h}"><path d="${d}" fill="${color}"/></svg>`;
+
+  const { data, info } = await sharp(Buffer.from(svg))
     .png()
     .toBuffer({ resolveWithObject: true });
   return { data, width: info.width, height: info.height };
@@ -373,8 +385,6 @@ export async function renderFrame(
   out: string,
   options: FrameOptions,
 ): Promise<void> {
-  ensureFontconfig();
-
   const image = sharp(prepared, { limitInputPixels: 1e9 }).rotate();
   const meta = await image.metadata();
   if (!meta.width || !meta.height) {

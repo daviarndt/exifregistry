@@ -182,6 +182,27 @@ describe("full-size rendering", () => {
   }, 30000);
 });
 
+describe("renderText (portable font rendering)", () => {
+  it("renders in the bundled monospace font (regression: fontconfig fallback)", async () => {
+    const { renderText } = await import("../src/frame.js");
+    // In a monospace font, N narrow glyphs and N wide glyphs are equal width.
+    const narrow = await renderText("iiiiiiiiii", 32, "#000000", false, 10000);
+    const wide = await renderText("MMMMMMMMMM", 32, "#000000", false, 10000);
+    expect(Math.abs(narrow!.width - wide!.width)).toBeLessThanOrEqual(1);
+  });
+
+  it("shrinks to fit maxWidth instead of overflowing", async () => {
+    const { renderText } = await import("../src/frame.js");
+    const block = await renderText("a very long caption line", 40, "#000", false, 200);
+    expect(block!.width).toBeLessThanOrEqual(200);
+  });
+
+  it("returns undefined for empty text", async () => {
+    const { renderText } = await import("../src/frame.js");
+    expect(await renderText("", 32, "#000", false, 100)).toBeUndefined();
+  });
+});
+
 describe("renderFrame (integration)", () => {
   it("renders the frame color, ratio and caption", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exifregistry-frame-test-"));
@@ -210,5 +231,13 @@ describe("renderFrame (integration)", () => {
     // center pixel is the photo (black-ish)
     const center = (300 * 600 + 300) * info.channels;
     expect(data[center]).toBeLessThan(30);
+    // the caption strip at the bottom actually contains dark text pixels
+    let darkest = 255;
+    for (let y = 500; y < 590; y++) {
+      for (let x = 100; x < 500; x++) {
+        darkest = Math.min(darkest, data[(y * 600 + x) * info.channels]);
+      }
+    }
+    expect(darkest).toBeLessThan(120);
   }, 30000);
 });
