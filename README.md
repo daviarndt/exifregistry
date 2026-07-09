@@ -31,8 +31,14 @@ $ exifkit show IMG_4021.CR3
 - 📋 **Copy metadata** between files (e.g. restore metadata after an export stripped it)
 - 🧹 **Strip everything** for privacy-safe sharing
 - ↩️ **Undo** — every edit keeps a backup by default; `exifkit undo` restores it
+- 🗂 **Organize** — move/copy photos into folders derived from metadata: `{year}/{date}`, `{camera}/{date}`, even `{country}/{city}` (offline geolocation, no internet needed)
+- ✏️ **Rename by pattern** — `{date}_{time}_{name}`, `{date}_{counter:3}` in shooting order
+- 💾 **Ingest** — import memory cards into organized folders with SHA-256 copy verification
+- 🔍 **Dupes** — find byte-identical duplicates before they clutter your library
 - 🧭 **Interactive mode** — just run `exifkit` and follow the menus; zero flags to memorize
 - 📦 **Self-contained** — ExifTool is bundled; `npm install` and you're done
+
+All file operations are **dry-run by default** (they print the plan; `--apply` executes), RAW+JPEG pairs and `.xmp`/`.aae` sidecars always travel together, nothing is ever overwritten, and every executed batch can be reverted with `--undo`.
 
 ## Installation
 
@@ -101,6 +107,36 @@ exifkit strip photo.jpg
 exifkit undo photo.jpg
 exifkit undo ~/Photos/trip           # restore every backup in a folder
 ```
+
+### Organizing files
+
+Every command below previews its plan first — add `--apply` to execute.
+
+```bash
+# Move photos into folders derived from metadata
+exifkit organize ~/Downloads/card --to ~/Photos --by "{year}/{date}"
+exifkit organize . --by "{camera}/{date}"        # multi-camera shoots
+exifkit organize . --by "{country}/{city}"       # GPS → city, fully offline
+exifkit organize . --by "{year}/{month}" --copy  # copy instead of move
+exifkit organize --undo --to ~/Photos            # revert the last batch
+
+# Rename in place (RAW+JPEG pairs and sidecars keep matching names)
+exifkit rename *.CR3 -p "{date}_{time}_{name}"
+exifkit rename . -p "wedding_{counter:3}"        # wedding_001.CR3, _002... in shooting order
+exifkit rename --undo .
+
+# Import a memory card: copies (never deletes from the card), verified
+exifkit ingest /Volumes/EOS_R6 --to ~/Photos --by "{year}/{date}" --verify --apply
+
+# Sort a messy folder into Photos/, RAW/ and Videos/
+exifkit split ~/Downloads/mixed --apply
+
+# Find byte-identical duplicates
+exifkit dupes ~/Photos -r
+exifkit dupes ~/Photos -r --delete --apply       # keeps the first of each group
+```
+
+**Pattern placeholders:** `{year}` `{month}` `{day}` `{date}` `{hour}` `{minute}` `{second}` `{time}` `{camera}` `{lens}` `{type}` `{name}` `{ext}` `{city}` `{region}` `{country}` `{counter}` (pad with `{counter:4}`). Dates come from `DateTimeOriginal` (real capture time), falling back to file dates only when the metadata is missing.
 
 ### Backups
 

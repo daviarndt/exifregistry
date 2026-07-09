@@ -7,6 +7,7 @@
 
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
+import * as path from "node:path";
 
 import { confirm } from "@inquirer/prompts";
 import { Command } from "commander";
@@ -16,11 +17,25 @@ import * as fields from "./fields.js";
 import {
   describeFiles,
   printAllTags,
+  printDryRunHint,
   printError,
   printFullReport,
+  printPlan,
   printSuccess,
 } from "./display.js";
+import { findDupes } from "./dupes.js";
 import { defaultExportPath, metadataToMarkdown } from "./markdown.js";
+import {
+  executePlan,
+  groupWithCompanions,
+  journalBatch,
+  planOrganize,
+  planRename,
+  undoLastBatch,
+  type FileGroup,
+  type MoveOp,
+} from "./organizer.js";
+import { captureDateParts, needsGeolocation } from "./pattern.js";
 import { expandPaths } from "./paths.js";
 import { planRestore, restore } from "./undo.js";
 
@@ -57,6 +72,62 @@ function resolveFiles(inputs: string[], recursive = false): string[] {
   }
   if (paths.length === 0) fail("No supported photo or video files found.");
   return paths;
+}
+
+/** Group files with their companions and read pattern metadata for primaries. */
+export async function prepareGroups(
+  paths: string[],
+  pattern: string,
+): Promise<{ groups: FileGroup[]; metadataByPrimary: Map<string, engine.Metadata> }> {
+  const groups = groupWithCompanions(paths);
+  const primaries = groups.map((g) => g.primary);
+  const metadata = await engine.read(primaries, {
+    geolocation: needsGeolocation(pattern),
+  });
+  const metadataByPrimary = new Map(primaries.map((p, i) => [p, metadata[i]]));
+  // Chronological order so {counter} follows shooting order.
+  groups.sort((a, b) => {
+    const dateOf = (g: FileGroup) => {
+      const d = captureDateParts(metadataByPrimary.get(g.primary) ?? {});
+      return d ? `${d.year}${d.month}${d.day}${d.hour}${d.minute}${d.second}` : "9";
+    };
+    return dateOf(a).localeCompare(dateOf(b)) || a.primary.localeCompare(b.primary);
+  });
+  return { groups, metadataByPrimary };
+}
+
+async function runMovePlan(
+  command: string,
+  ops: MoveOp[],
+  opts: { apply: boolean; copy?: boolean; verify?: boolean; journalRoot: string },
+): Promise<void> {
+  if (ops.length === 0) {
+    console.log("Nothing to do — everything is already in place.");
+    return;
+  }
+  const verb = opts.copy ? "copy" : command === "rename" ? "rename" : "move";
+  printPlan(ops, verb);
+  if (!opts.apply) {
+    printDryRunHint();
+    return;
+  }
+  const done = await executePlan(ops, { copy: opts.copy, verify: opts.verify });
+  journalBatch(opts.journalRoot, command, done, opts.copy ?? false);
+  printSuccess(
+    `${done.length} file(s) ${opts.copy ? "copied" : command === "rename" ? "renamed" : "moved"}. ` +
+      `Undo with: exifkit ${command} --undo${command === "rename" ? " <folder>" : ""}`,
+  );
+}
+
+function runUndoBatch(root: string): void {
+  const batch = undoLastBatch(root);
+  if (!batch) {
+    fail(`No operations to undo in "${root}" (no journal found).`);
+  }
+  printSuccess(
+    `Undid last ${batch.command} (${batch.ops.length} file(s) ` +
+      `${batch.copy ? "removed" : "moved back"}).`,
+  );
 }
 
 /** GPS lives in different tags for images vs QuickTime videos: two passes. */
@@ -272,6 +343,179 @@ export function buildProgram(): Command {
       printSuccess(
         `Restored ${describeFiles(plans.map((p) => p.target))} from backup.`,
       );
+    });
+
+  program
+    .command("organize")
+    .description("Move (or copy) photos/videos into folders derived from their metadata.")
+    .argument("[paths...]", "files, folders or glob patterns")
+    .option("--to <dir>", "destination root the folders are created under", ".")
+    .option(
+      "--by <pattern>",
+      'folder pattern, e.g. "{year}/{date}", "{camera}/{date}", "{city}/{date}"',
+      "{year}/{date}",
+    )
+    .option("--copy", "copy instead of move")
+    .option("-r, --recursive", "recurse into subfolders")
+    .option("--apply", "execute the plan (default is a dry-run preview)")
+    .option("--undo", "undo the last organize/ingest executed under --to")
+    .action(async (paths: string[], opts) => {
+      if (opts.undo) {
+        runUndoBatch(opts.to);
+        return;
+      }
+      if (paths.length === 0) {
+        fail("Tell me what to organize, e.g.: exifkit organize ~/Downloads/card --to ~/Photos");
+      }
+      const files = resolveFiles(paths, opts.recursive);
+      const { groups, metadataByPrimary } = await prepareGroups(files, opts.by);
+      let ops: MoveOp[];
+      try {
+        ops = planOrganize(groups, metadataByPrimary, {
+          pattern: opts.by,
+          destRoot: opts.to,
+        });
+      } catch (err) {
+        fail((err as Error).message);
+      }
+      await runMovePlan("organize", ops, {
+        apply: opts.apply,
+        copy: opts.copy,
+        journalRoot: opts.to,
+      });
+    });
+
+  program
+    .command("rename")
+    .description("Rename photos/videos in place using a metadata pattern.")
+    .argument("[files...]", "files, folders or glob patterns")
+    .option(
+      "-p, --pattern <pattern>",
+      'filename pattern, e.g. "{date}_{time}_{name}" or "{date}_{counter:3}"',
+      "{date}_{time}_{name}",
+    )
+    .option("-r, --recursive", "recurse into subfolders")
+    .option("--apply", "execute the plan (default is a dry-run preview)")
+    .option("--undo", "undo the last rename journaled in the given folder")
+    .action(async (files: string[], opts) => {
+      if (opts.undo) {
+        runUndoBatch(files[0] ?? ".");
+        return;
+      }
+      if (files.length === 0) {
+        fail('Tell me what to rename, e.g.: exifkit rename *.CR3 -p "{date}_{counter:3}"');
+      }
+      const paths = resolveFiles(files, opts.recursive);
+      const { groups, metadataByPrimary } = await prepareGroups(paths, opts.pattern);
+      let ops: MoveOp[];
+      try {
+        ops = planRename(groups, metadataByPrimary, { pattern: opts.pattern });
+      } catch (err) {
+        fail((err as Error).message);
+      }
+      const journalRoot =
+        ops.length > 0 ? path.dirname(ops[0].source) : ".";
+      await runMovePlan("rename", ops, {
+        apply: opts.apply,
+        journalRoot,
+      });
+    });
+
+  program
+    .command("ingest")
+    .description("Import from a memory card: copy into organized folders, verified.")
+    .argument("<source>", "card/folder to import from")
+    .option("--to <dir>", "destination root (required)", "")
+    .option("--by <pattern>", "folder pattern under --to", "{year}/{date}")
+    .option("--verify", "verify each copy with SHA-256 checksums")
+    .option("--move", "move instead of copy (default copies; the card keeps its files)")
+    .option("--apply", "execute the plan (default is a dry-run preview)")
+    .option("--undo", "undo the last ingest executed under --to")
+    .action(async (source: string, opts) => {
+      if (!opts.to) fail("Tell me where to import to with --to <dir>.");
+      if (opts.undo) {
+        runUndoBatch(opts.to);
+        return;
+      }
+      const files = resolveFiles([source], true);
+      const { groups, metadataByPrimary } = await prepareGroups(files, opts.by);
+      let ops: MoveOp[];
+      try {
+        ops = planOrganize(groups, metadataByPrimary, {
+          pattern: opts.by,
+          destRoot: opts.to,
+        });
+      } catch (err) {
+        fail((err as Error).message);
+      }
+      await runMovePlan("ingest", ops, {
+        apply: opts.apply,
+        copy: !opts.move,
+        verify: opts.verify,
+        journalRoot: opts.to,
+      });
+    });
+
+  program
+    .command("split")
+    .description("Sort a mixed folder into Photos/, RAW/ and Videos/ subfolders.")
+    .argument("<dir>", "folder to split")
+    .option("--apply", "execute the plan (default is a dry-run preview)")
+    .option("--undo", "undo the last split executed in this folder")
+    .action(async (dir: string, opts) => {
+      if (opts.undo) {
+        runUndoBatch(dir);
+        return;
+      }
+      const files = resolveFiles([dir]);
+      const { groups, metadataByPrimary } = await prepareGroups(files, "{type}");
+      const ops = planOrganize(groups, metadataByPrimary, {
+        pattern: "{type}",
+        destRoot: dir,
+      });
+      await runMovePlan("split", ops, { apply: opts.apply, journalRoot: dir });
+    });
+
+  program
+    .command("dupes")
+    .description("Find byte-identical duplicate files (safe: reports only by default).")
+    .argument("<paths...>", "files, folders or glob patterns")
+    .option("-r, --recursive", "recurse into subfolders")
+    .option("--delete", "plan deletion of duplicates (keeps the first of each group)")
+    .option("--apply", "with --delete: actually delete (there is NO undo for this)")
+    .action(async (paths: string[], opts) => {
+      const files = resolveFiles(paths, opts.recursive);
+      const groups = await findDupes(files);
+      if (groups.length === 0) {
+        printSuccess("No duplicates found.");
+        return;
+      }
+      let wasted = 0;
+      for (const group of groups) {
+        console.log(`${group.files[0]}  (${group.files.length} identical copies)`);
+        for (const file of group.files.slice(1)) {
+          console.log(`  = ${file}`);
+          wasted += group.size;
+        }
+      }
+      console.log(
+        `${groups.length} duplicate group(s), ` +
+          `${(wasted / 1024 / 1024).toFixed(1)} MB reclaimable.`,
+      );
+      if (!opts.delete) return;
+      const doomed = groups.flatMap((g) => g.files.slice(1));
+      if (!opts.apply) {
+        console.log(`Would delete ${doomed.length} file(s), keeping the first of each group.`);
+        printDryRunHint();
+        return;
+      }
+      const confirmed = await confirm({
+        message: `Permanently delete ${doomed.length} duplicate file(s)? This cannot be undone.`,
+        default: false,
+      });
+      if (!confirmed) return;
+      for (const file of doomed) fs.rmSync(file);
+      printSuccess(`Deleted ${doomed.length} duplicate file(s).`);
     });
 
   program

@@ -5,14 +5,23 @@
  * flags need to be memorized. Every action maps 1:1 onto a CLI subcommand.
  */
 
+import * as path from "node:path";
+
 import { confirm, input, select } from "@inquirer/prompts";
 import pc from "picocolors";
 
 import * as engine from "./engine.js";
 import * as fields from "./fields.js";
-import { writeMarkdownReport } from "./cli.js";
-import { describeFiles, printError, printFullReport, printSuccess } from "./display.js";
+import { prepareGroups, writeMarkdownReport } from "./cli.js";
+import {
+  describeFiles,
+  printError,
+  printFullReport,
+  printPlan,
+  printSuccess,
+} from "./display.js";
 import { defaultExportPath } from "./markdown.js";
+import { executePlan, journalBatch, planOrganize, planRename } from "./organizer.js";
 import { expandPaths } from "./paths.js";
 import { planRestore, restore } from "./undo.js";
 
@@ -225,6 +234,85 @@ async function actionStrip(): Promise<void> {
   printSuccess(`Stripped all metadata from ${describeFiles(paths)}.`);
 }
 
+async function actionOrganize(): Promise<void> {
+  const paths = await askFiles("Organize which files? (path, folder, or glob)");
+  if (!paths) return;
+  const preset = await select({
+    message: "Folder structure?",
+    choices: [
+      { name: "By date          → 2026/2026-07-05/", value: "{year}/{date}" },
+      { name: "By month         → 2026/07/", value: "{year}/{month}" },
+      { name: "By camera        → Canon EOS R6/2026-07-05/", value: "{camera}/{date}" },
+      { name: "By location      → Brazil/Sao Paulo/", value: "{country}/{city}" },
+      { name: "Custom pattern…", value: "custom" },
+    ],
+  });
+  const pattern =
+    preset === "custom"
+      ? (await input({ message: "Pattern (e.g. {year}/{month}/{day}):" })).trim()
+      : preset;
+  if (!pattern) return;
+  const destRoot = (
+    await input({ message: "Destination root folder:", default: "." })
+  ).trim() || ".";
+  const copy = !(await confirm({
+    message: "Move the files? (No = copy them instead)",
+    default: true,
+  }));
+
+  const { groups, metadataByPrimary } = await prepareGroups(paths, pattern);
+  let ops;
+  try {
+    ops = planOrganize(groups, metadataByPrimary, { pattern, destRoot });
+  } catch (err) {
+    printError((err as Error).message);
+    return;
+  }
+  if (ops.length === 0) {
+    console.log("Nothing to do — everything is already in place.");
+    return;
+  }
+  printPlan(ops, copy ? "copy" : "move");
+  if (!(await confirm({ message: "Execute this plan?", default: false }))) return;
+  const done = await executePlan(ops, { copy });
+  journalBatch(destRoot, "organize", done, copy);
+  printSuccess(
+    `${done.length} file(s) ${copy ? "copied" : "moved"}. ` +
+      "Undo with: exifkit organize --undo" +
+      (destRoot === "." ? "" : ` --to ${destRoot}`),
+  );
+}
+
+async function actionRename(): Promise<void> {
+  const paths = await askFiles("Rename which files? (path, folder, or glob)");
+  if (!paths) return;
+  const pattern = (
+    await input({
+      message: "Filename pattern:",
+      default: "{date}_{time}_{name}",
+    })
+  ).trim();
+  if (!pattern) return;
+
+  const { groups, metadataByPrimary } = await prepareGroups(paths, pattern);
+  let ops;
+  try {
+    ops = planRename(groups, metadataByPrimary, { pattern });
+  } catch (err) {
+    printError((err as Error).message);
+    return;
+  }
+  if (ops.length === 0) {
+    console.log("Nothing to do — names already match the pattern.");
+    return;
+  }
+  printPlan(ops, "rename");
+  if (!(await confirm({ message: "Execute this plan?", default: false }))) return;
+  const done = await executePlan(ops);
+  journalBatch(path.dirname(done[0].source), "rename", done, false);
+  printSuccess(`${done.length} file(s) renamed.`);
+}
+
 async function actionUndo(): Promise<void> {
   const answer = (
     await input({
@@ -260,6 +348,8 @@ export async function runInteractive(): Promise<void> {
     dates: actionDates,
     copy: actionCopy,
     strip: actionStrip,
+    organize: actionOrganize,
+    rename: actionRename,
     undo: actionUndo,
   };
 
@@ -275,7 +365,9 @@ export async function runInteractive(): Promise<void> {
           { name: "🕑  Edit dates", value: "dates" },
           { name: "📋  Copy metadata between files", value: "copy" },
           { name: "🧹  Strip all metadata (privacy)", value: "strip" },
-          { name: "↩️   Undo (restore from backup)", value: "undo" },
+          { name: "🗂   Organize into folders", value: "organize" },
+          { name: "✏️   Rename by pattern", value: "rename" },
+          { name: "↩️   Undo metadata edit (restore backup)", value: "undo" },
           { name: "👋  Quit", value: "quit" },
         ],
       });

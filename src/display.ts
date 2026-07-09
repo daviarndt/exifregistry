@@ -231,6 +231,27 @@ export function printError(message: string): void {
   console.error(pc.red(message));
 }
 
+/** Preview a move/copy/rename plan: "source → target" rows, capped. */
+export function printPlan(
+  ops: { source: string; target: string }[],
+  verb: string,
+  limit = 20,
+): void {
+  for (const op of ops.slice(0, limit)) {
+    console.log(`  ${op.source}\n    ${pc.green("→")} ${op.target}`);
+  }
+  if (ops.length > limit) {
+    console.log(pc.dim(`  … and ${ops.length - limit} more`));
+  }
+  console.log(pc.bold(`${ops.length} file(s) to ${verb}.`));
+}
+
+export function printDryRunHint(): void {
+  console.log(
+    pc.yellow("Dry run — nothing was changed. Add --apply to execute this plan."),
+  );
+}
+
 export function describeFiles(paths: string[]): string {
   if (paths.length === 1) {
     const p = paths[0];

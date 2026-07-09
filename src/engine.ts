@@ -10,9 +10,22 @@ export type Metadata = Record<string, unknown>;
 
 const exiftool = new ExifTool();
 
+export interface ReadOptions {
+  /**
+   * Resolve GPS coordinates to city/region/country using ExifTool's
+   * offline geolocation database (adds Geolocation* tags).
+   */
+  geolocation?: boolean;
+}
+
 /** Read metadata for files as plain tag objects (numeric, machine-readable). */
-export async function read(paths: string[]): Promise<Metadata[]> {
-  return Promise.all(paths.map((p) => exiftool.readRaw(p, ["-n"])));
+export async function read(
+  paths: string[],
+  options: ReadOptions = {},
+): Promise<Metadata[]> {
+  const args = ["-n"];
+  if (options.geolocation) args.push("-api", "geolocation");
+  return Promise.all(paths.map((p) => exiftool.readRaw(p, args)));
 }
 
 /**

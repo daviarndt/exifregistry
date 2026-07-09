@@ -10,12 +10,18 @@ export const VIDEO_EXTENSIONS = new Set([
   ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".mts", ".m2ts",
 ]);
 
-export const IMAGE_EXTENSIONS = new Set([
-  ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".heic", ".heif", ".webp",
-  // RAW formats
+export const RAW_EXTENSIONS = new Set([
   ".dng", ".cr2", ".cr3", ".nef", ".nrw", ".arw", ".raf", ".orf",
   ".rw2", ".pef", ".srw", ".x3f", ".3fr", ".fff", ".iiq", ".gpr",
 ]);
+
+export const IMAGE_EXTENSIONS = new Set([
+  ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".heic", ".heif", ".webp",
+  ...RAW_EXTENSIONS,
+]);
+
+/** Companion files that must always travel with their photo/video. */
+export const SIDECAR_EXTENSIONS = new Set([".xmp", ".aae"]);
 
 export const SUPPORTED_EXTENSIONS = new Set([
   ...IMAGE_EXTENSIONS,
@@ -35,6 +41,10 @@ export function extensionOf(path: string): string {
 
 export function isVideo(path: string): boolean {
   return VIDEO_EXTENSIONS.has(extensionOf(path));
+}
+
+export function isRaw(path: string): boolean {
+  return RAW_EXTENSIONS.has(extensionOf(path));
 }
 
 const ISO_DATETIME =
