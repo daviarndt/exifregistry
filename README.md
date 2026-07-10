@@ -6,9 +6,9 @@
 
 **Website: [exifregistry.com](https://exifregistry.com)** · Support the project: [Buy me a coffee](https://buymeacoffee.com/daviarndtx) ☕
 
-A friendly command-line toolkit for photographers and filmmakers to **inspect and edit photo/video metadata** — EXIF, GPS location, capture dates and more.
+A friendly command-line toolkit for photographers and filmmakers to **inspect and edit photo/video metadata**: EXIF, GPS location, capture dates and more.
 
-Works with JPEG, PNG, TIFF, HEIC, all major RAW formats (CR2/CR3, NEF, ARW, DNG, RAF, ORF...) and video containers (MP4, MOV, AVI...), powered by the battle-tested [ExifTool](https://exiftool.org) — which comes **bundled**, so there is nothing else to install.
+Works with JPEG, PNG, TIFF, HEIC, all major RAW formats (CR2/CR3, NEF, ARW, DNG, RAF, ORF...) and video containers (MP4, MOV, AVI...), powered by the battle-tested [ExifTool](https://exiftool.org), which comes **bundled**, so there is nothing else to install.
 
 ```
 $ exifreg show IMG_4021.CR3
@@ -26,22 +26,28 @@ $ exifreg show IMG_4021.CR3
 
 ## Features
 
-- 📷 **Inspect** — full report with what matters first (camera, **shutter count**, serial number, exposure, dates, GPS), followed by every remaining tag
-- 📝 **Markdown export** — save any inspect report as a clean `.md` file to archive or share
-- 📍 **GPS editing** — set location by pasting coordinates straight from Google/Apple Maps; remove GPS for privacy
-- 🕑 **Date editing** — fix capture dates, modification dates, or **shift all dates** to fix a wrong camera clock/timezone
+- 📷 **Inspect**: full report with what matters first (camera, **shutter count**, serial number, exposure, dates, GPS), followed by every remaining tag
+- 📝 **Markdown export**: save any inspect report as a clean `.md` file to archive or share
+- 📍 **GPS editing**: set location by pasting coordinates straight from Google/Apple Maps; remove GPS for privacy
+- 🕑 **Date editing**: fix capture dates, modification dates, or **shift all dates** to fix a wrong camera clock/timezone
 - 📋 **Copy metadata** between files (e.g. restore metadata after an export stripped it)
 - 🧹 **Strip everything** for privacy-safe sharing
-- ↩️ **Undo** — every edit keeps a backup by default; `exifreg undo` restores it
-- 🗂 **Organize** — move/copy photos into folders derived from metadata: `{year}/{date}`, `{camera}/{date}`, even `{country}/{city}` (offline geolocation, no internet needed)
-- ✏️ **Rename by pattern** — `{date}_{time}_{name}`, `{date}_{counter:3}` in shooting order
-- 💾 **Ingest** — import memory cards into organized folders with SHA-256 copy verification
-- 🔍 **Dupes** — find byte-identical duplicates before they clutter your library
-- 🗄 **Backup** — verified, append-only backups with a SHA-256 manifest: changed files are versioned (never overwritten), deletions never propagate, and `--verify` detects silent corruption years later
-- 🖼 **Frame** — re-render photos inside an aesthetic colored frame with their EXIF caption in Space Mono, ready for portfolios and social media (multiple aspect ratios, 21 named colors)
-- 📐 **Resize & convert** — hit an exact file size ("make this 1MB") with the best quality that fits, resize by long edge/percent, convert JPEG/WebP/AVIF/PNG — originals never touched, EXIF preserved
-- 🧭 **Interactive mode** — just run `exifreg` and follow the menus; zero flags to memorize
-- 📦 **Self-contained** — ExifTool is bundled; `npm install` and you're done
+- ↩️ **Undo**: every edit keeps a backup by default; `exifreg undo` restores it
+- 🗂 **Organize**: move/copy photos into folders derived from metadata: `{year}/{date}`, `{camera}/{date}`, even `{country}/{city}` (offline geolocation, no internet needed)
+- ✏️ **Rename by pattern**: `{date}_{time}_{name}`, `{date}_{counter:3}` in shooting order
+- 💾 **Ingest**: import memory cards into organized folders with SHA-256 copy verification
+- 🔍 **Dupes**: find byte-identical duplicates before they clutter your library
+- 🗄 **Backup**: verified, append-only backups with a SHA-256 manifest: changed files are versioned (never overwritten), deletions never propagate, and `--verify` detects silent corruption years later
+- 📊 **Stats**: library analytics: which lenses and focal lengths you actually use, ISO habits, shots per month
+- 🔎 **Find**: query files by metadata (`ISO>3200`, `Model~canon`) and pipe the paths anywhere
+- 🌍 **Timezone**: write the UTC offset cameras forget, even deriving it from each photo's own GPS (offline)
+- ✍️ **Sign**: stamp your authorship (Artist + Copyright) in bulk, with a saved preset
+- 🪞 **Diff**: compare two files' metadata side by side
+- 🖼 **Contact sheets**: a client-ready thumbnail grid with EXIF labels, one JPEG
+- 🖼 **Frame**: re-render photos inside an aesthetic colored frame with their EXIF caption in Space Mono, ready for portfolios and social media (multiple aspect ratios, 21 named colors)
+- 📐 **Resize & convert**: hit an exact file size ("make this 1MB") with the best quality that fits, resize by long edge/percent, convert JPEG/WebP/AVIF/PNG. Originals never touched, EXIF preserved
+- 🧭 **Interactive mode**: just run `exifreg` and follow the menus; zero flags to memorize
+- 📦 **Self-contained**: ExifTool is bundled; `npm install` and you're done
 
 All file operations are **dry-run by default** (they print the plan; `--apply` executes), RAW+JPEG pairs and `.xmp`/`.aae` sidecars always travel together, nothing is ever overwritten, and every executed batch can be reverted with `--undo`.
 
@@ -90,7 +96,7 @@ exifreg show photo.jpg --json       # machine-readable
 exifreg show photo.jpg --export     # also save the report as photo.metadata.md
 exifreg show *.CR3 -e shoot-day1.md # batch report into one custom .md file
 
-# Set GPS location — paste coordinates straight from a maps app
+# Set GPS location: paste coordinates straight from a maps app
 exifreg gps photo.jpg --coords "-23.5505, -46.6333"
 exifreg gps *.jpg --lat -23.5505 --lon -46.6333 --alt 760
 exifreg gps clip.mp4 --coords "48.8566, 2.3522"   # videos too
@@ -117,7 +123,7 @@ exifreg undo ~/Photos/trip           # restore every backup in a folder
 
 ### Organizing files
 
-Every command below previews its plan first — add `--apply` to execute.
+Every command below previews its plan first. Add `--apply` to execute.
 
 ```bash
 # Move photos into folders derived from metadata
@@ -141,6 +147,38 @@ exifreg split ~/Downloads/mixed --apply
 # Find byte-identical duplicates
 exifreg dupes ~/Photos -r
 exifreg dupes ~/Photos -r --delete --apply       # keeps the first of each group
+```
+
+### Library intelligence
+
+```bash
+exifreg stats ~/Photos -r                    # cameras, lenses, focals, ISO, months
+exifreg stats ~/Photos -r -e stats.md        # export the report to Markdown
+
+exifreg find . -w "ISO>3200"                 # paths only: pipe-friendly
+exifreg find . -w "Model~canon" -w "DateTimeOriginal>=2026:07"   # conditions AND
+exifreg find . -w "LensModel~35mm" | xargs exifreg frame -c white
+
+exifreg diff original.CR3 exported.jpg       # what changed? side-by-side table
+```
+
+Query operators: `=` `!=` `>` `>=` `<` `<=` and `~` (contains). Values compare numerically when both sides are numbers; EXIF dates compare chronologically as strings.
+
+### Authorship and timezones
+
+```bash
+exifreg sign *.jpg --artist "Davi Arndt" --copyright "© {year} Davi Arndt" --save-preset
+exifreg sign wedding/                        # next time, the preset is enough
+
+exifreg timezone *.jpg --offset "-03:00"     # write OffsetTime* tags explicitly
+exifreg timezone trip/ --from-gps            # derive each photo's offset from its GPS, offline
+```
+
+### Contact sheets
+
+```bash
+exifreg contact wedding/ -c 5                # 5 columns, wedding-contact.jpg
+exifreg contact selects/ --out client.jpg    # RAW files use their embedded previews
 ```
 
 ### Backing up
@@ -170,7 +208,7 @@ How it keeps your archive safe:
 
 ### Framing photos
 
-Render photos inside a colored frame with their EXIF written underneath (or on top) in Space Mono — the classic "shot on" portfolio look:
+Render photos inside a colored frame with their EXIF written underneath (or on top) in Space Mono, the classic "shot on" portfolio look:
 
 ```bash
 exifreg frame photo.jpg                            # white frame, EXIF below
@@ -189,7 +227,7 @@ Colors include everyday tones (white, off-white, cream, black, charcoal, gray...
 
 ### Resizing & converting
 
-Every resize writes a **new** file (`photo.resized.jpg`) — the original is never modified — and the output keeps the original's EXIF:
+Every resize writes a **new** file (`photo.resized.jpg`), the original is never modified, and the output keeps the original's EXIF:
 
 ```bash
 exifreg resize photo.jpg --max-size 1mb     # best quality that fits in 1 MB
@@ -201,7 +239,7 @@ exifreg resize photo.heic -f jpeg           # HEIC → JPEG (macOS)
 exifreg resize photo.jpg --long 1600 -f webp --suffix web   # photo.web.webp
 ```
 
-`--max-size` runs a binary search over encoding quality (mozjpeg) to find the **highest quality that fits** your target — no guessing quality numbers. If even minimum quality can't reach it, dimensions are gently reduced until it does. The success line tells you exactly what happened: `photo.jpg (12.3 MB) → photo.resized.jpg (0.98 MB, 6000x4000, q74)`.
+`--max-size` runs a binary search over encoding quality (mozjpeg) to find the **highest quality that fits** your target. No guessing quality numbers. If even minimum quality can't reach it, dimensions are gently reduced until it does. The success line tells you exactly what happened: `photo.jpg (12.3 MB) → photo.resized.jpg (0.98 MB, 6000x4000, q74)`.
 
 **Pattern placeholders:** `{year}` `{month}` `{day}` `{date}` `{hour}` `{minute}` `{second}` `{time}` `{camera}` `{lens}` `{type}` `{name}` `{ext}` `{city}` `{region}` `{country}` `{counter}` (pad with `{counter:4}`). Dates come from `DateTimeOriginal` (real capture time), falling back to file dates only when the metadata is missing.
 

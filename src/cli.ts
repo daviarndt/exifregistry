@@ -14,10 +14,14 @@ import { Command } from "commander";
 
 import * as engine from "./engine.js";
 import * as fields from "./fields.js";
+import { configPath, loadConfig, saveConfig } from "./config.js";
+import { renderContactSheet } from "./contact.js";
 import {
+  buildDiffRows,
   clearProgress,
   describeFiles,
   printAllTags,
+  printBarSection,
   printDryRunHint,
   printError,
   printFullReport,
@@ -25,6 +29,9 @@ import {
   printSuccess,
   showProgress,
 } from "./display.js";
+import { computeStats, statsToMarkdown } from "./stats.js";
+import { matches, parseCondition, type Condition } from "./query.js";
+import { offsetFromGps, offsetTagArgs, validateOffset } from "./tz.js";
 import {
   assertRootOutsideSources,
   collectMirrorCandidates,
@@ -819,6 +826,257 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
       } catch (err) {
         fail((err as Error).message);
       }
+    });
+
+  program
+    .command("stats")
+    .description("Library analytics from metadata: cameras, lenses, focal lengths, ISO...")
+    .argument("<paths...>", "files, folders or glob patterns")
+    .option("-r, --recursive", "recurse into subfolders")
+    .option("--json", "output raw JSON (machine-readable)")
+    .option("-e, --export [file.md]", "also export the stats to a Markdown file")
+    .action(async (paths: string[], opts) => {
+      const files = resolveFiles(paths, opts.recursive);
+      showProgress(1, 2, `reading ${files.length} files`);
+      const metadata = await engine.read(files);
+      clearProgress();
+      const stats = computeStats(metadata);
+      if (opts.json) {
+        console.log(JSON.stringify(stats, null, 2));
+        return;
+      }
+      console.log(
+        `${stats.files} files, ${stats.withCaptureDate} with a capture date.\n`,
+      );
+      printBarSection("Cameras", stats.cameras);
+      printBarSection("Lenses", stats.lenses);
+      printBarSection("Focal lengths", stats.focalLengths);
+      printBarSection("ISO", stats.isos);
+      printBarSection("Apertures", stats.apertures);
+      printBarSection("Shots per month", stats.byMonth);
+      printBarSection("Shots per hour of day", stats.byHour);
+      if (opts.export) {
+        const title = paths.join(", ");
+        const target =
+          opts.export === true ? "library-stats.md" : String(opts.export);
+        if (!target.toLowerCase().endsWith(".md")) {
+          fail(`Export file must end in .md (got "${target}").`);
+        }
+        fs.writeFileSync(target, statsToMarkdown(stats, title));
+        printSuccess(`Exported stats to ${target}.`);
+      }
+    });
+
+  program
+    .command("timezone")
+    .description("Write the UTC offset (OffsetTime* tags) that cameras usually omit.")
+    .argument("<files...>", "files, folders or glob patterns")
+    .option("--offset <±HH:MM>", 'set an explicit offset, e.g. "-03:00"')
+    .option(
+      "--from-gps",
+      "derive each photo's offset from its own GPS position (offline)",
+    )
+    .option("--no-backup", "do not keep '_original' backup copies")
+    .action(async (files: string[], opts) => {
+      if (!opts.offset && !opts.fromGps) {
+        fail('Tell me the offset with --offset "-03:00", or use --from-gps.');
+      }
+      if (opts.offset && opts.fromGps) {
+        fail("Use either --offset or --from-gps, not both.");
+      }
+      const paths = resolveFiles(files).filter((p) => !fields.isVideo(p));
+      if (paths.length === 0) fail("No photos found (videos have no offset tags).");
+
+      if (opts.offset) {
+        let offset: string;
+        try {
+          offset = validateOffset(opts.offset);
+        } catch (err) {
+          fail((err as Error).message);
+        }
+        await engine.applyEdit(
+          paths,
+          { tags: {}, extraArgs: offsetTagArgs(offset) },
+          { backup: opts.backup },
+        );
+        printSuccess(`Set timezone offset ${offset} on ${describeFiles(paths)}.`);
+        return;
+      }
+
+      const metadata = await engine.read(paths);
+      const byOffset = new Map<string, string[]>();
+      const skipped: string[] = [];
+      const zones = new Map<string, string>();
+      paths.forEach((p, i) => {
+        const result = offsetFromGps(metadata[i] ?? {});
+        if (!result) {
+          skipped.push(p);
+          return;
+        }
+        zones.set(result.offset, result.zone);
+        byOffset.set(result.offset, [...(byOffset.get(result.offset) ?? []), p]);
+      });
+      if (byOffset.size === 0) {
+        fail("None of these files have GPS coordinates to derive an offset from.");
+      }
+      for (const [offset, group] of byOffset) {
+        showProgress(1, byOffset.size, `${offset} (${zones.get(offset)})`);
+        await engine.applyEdit(
+          group,
+          { tags: {}, extraArgs: offsetTagArgs(offset) },
+          { backup: opts.backup },
+        );
+        printSuccess(
+          `${group.length} file(s) set to ${offset} (${zones.get(offset)}).`,
+        );
+      }
+      for (const p of skipped) {
+        console.log(`  skipped (no GPS): ${path.basename(p)}`);
+      }
+    });
+
+  program
+    .command("find")
+    .description("Find files by metadata and print their paths (pipe-friendly).")
+    .argument("<paths...>", "files, folders or glob patterns")
+    .requiredOption(
+      "-w, --where <condition>",
+      'e.g. "ISO>3200", "Model=Canon EOS R6", "LensModel~35mm" (repeat to AND)',
+      (value: string, previous: string[] = []) => [...previous, value],
+    )
+    .option("-r, --recursive", "recurse into subfolders")
+    .action(async (paths: string[], opts) => {
+      let conditions: Condition[];
+      try {
+        conditions = (opts.where as string[]).map(parseCondition);
+      } catch (err) {
+        fail((err as Error).message);
+      }
+      const files = resolveFiles(paths, opts.recursive);
+      const metadata = await engine.read(files);
+      let hits = 0;
+      files.forEach((file, i) => {
+        if (matches(metadata[i] ?? {}, conditions)) {
+          console.log(file);
+          hits += 1;
+        }
+      });
+      if (hits === 0) {
+        printError("No files match.");
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command("diff")
+    .description("Compare the metadata of two files side by side.")
+    .argument("<fileA>")
+    .argument("<fileB>")
+    .option("-a, --all", "also list tags with identical values")
+    .action(async (fileA: string, fileB: string, opts) => {
+      const [a] = resolveFiles([fileA]);
+      const [b] = resolveFiles([fileB]);
+      const [fullA, fullB] = await engine.readFull([a, b]);
+      const { differing, identical } = buildDiffRows(fullA.pretty, fullB.pretty);
+      if (differing.length === 0) {
+        printSuccess(`Metadata is identical (${identical} tags).`);
+        return;
+      }
+      const Table = (await import("cli-table3")).default;
+      const table = new Table({
+        head: ["Tag", path.basename(a), path.basename(b)],
+        style: { head: [], border: [] },
+        wordWrap: true,
+        colWidths: [26, 34, 34],
+      });
+      for (const [tag, va, vb] of differing) table.push([tag, va, vb]);
+      console.log(table.toString());
+      console.log(`${differing.length} tag(s) differ, ${identical} identical.`);
+      if (opts.all) {
+        const same = Object.keys(fullA.pretty)
+          .filter((k) => String(fullA.pretty[k]) === String(fullB.pretty[k]))
+          .sort();
+        for (const k of same) console.log(`  = ${k}: ${fullA.pretty[k]}`);
+      }
+    });
+
+  program
+    .command("sign")
+    .description("Write your authorship (Artist + Copyright) into photos.")
+    .argument("<files...>", "files, folders or glob patterns")
+    .option("--artist <name>", "artist/creator name")
+    .option("--copyright <text>", 'copyright notice; "{year}" becomes the current year')
+    .option("--save-preset", "save --artist/--copyright as the default preset")
+    .option("--no-backup", "do not keep '_original' backup copies")
+    .action(async (files: string[], opts) => {
+      const preset = loadConfig().sign ?? {};
+      const artist: string | undefined = opts.artist ?? preset.artist;
+      const copyrightRaw: string | undefined = opts.copyright ?? preset.copyright;
+      if (!artist && !copyrightRaw) {
+        fail(
+          "Nothing to write. Pass --artist and/or --copyright " +
+            "(add --save-preset once, and next time plain 'exifreg sign' is enough).",
+        );
+      }
+      if (opts.savePreset) {
+        saveConfig({
+          sign: {
+            ...(opts.artist ? { artist: opts.artist } : {}),
+            ...(opts.copyright ? { copyright: opts.copyright } : {}),
+          },
+        });
+        printSuccess(`Preset saved to ${configPath()}.`);
+      }
+      const copyright = copyrightRaw?.replace(
+        /\{year\}/g,
+        String(new Date().getFullYear()),
+      );
+      const paths = resolveFiles(files);
+      const tags: Record<string, unknown> = {};
+      if (artist) tags.Artist = artist;
+      if (copyright) tags.Copyright = copyright;
+      await engine.applyEdit(paths, { tags, extraArgs: [] }, { backup: opts.backup });
+      printSuccess(
+        `Signed ${describeFiles(paths)}` +
+          (artist ? ` as "${artist}"` : "") +
+          (copyright ? ` (${copyright})` : "") + ".",
+      );
+    });
+
+  program
+    .command("contact")
+    .description("Render a contact sheet (thumbnail grid with EXIF labels) as one JPEG.")
+    .argument("<paths...>", "files, folders or glob patterns")
+    .option("-c, --columns <n>", "thumbnails per row", "4")
+    .option("--cell <px>", "width of each thumbnail cell", "320")
+    .option("-o, --out <file.jpg>", "output file (default: <name>-contact.jpg)")
+    .option("-r, --recursive", "recurse into subfolders")
+    .action(async (paths: string[], opts) => {
+      const files = resolveFiles(paths, opts.recursive).filter(
+        (p) => !fields.isVideo(p),
+      );
+      if (files.length === 0) fail("No photos to lay out (videos are skipped).");
+      const columns = Number(opts.columns);
+      const cellWidth = Number(opts.cell);
+      if (!Number.isFinite(columns) || !Number.isFinite(cellWidth)) {
+        fail("--columns and --cell must be numbers.");
+      }
+      const title = path.basename(path.resolve(paths[0]));
+      let out = opts.out ?? `${title.replace(/\.[^.]+$/, "")}-contact.jpg`;
+      if (!/\.jpe?g$/i.test(out)) fail(`Output must be a .jpg file (got "${out}").`);
+      for (let i = 1; fs.existsSync(out); i++) {
+        out = out.replace(/(_\d+)?\.jpe?g$/i, `_${i}.jpg`);
+      }
+      const metadata = await engine.read(files);
+      const sheet = await renderContactSheet(files, metadata, out, {
+        columns,
+        cellWidth,
+        title,
+        onProgress: (c, t, f) => showProgress(c, t, f),
+      });
+      printSuccess(
+        `Contact sheet with ${sheet.cells} photos → ${out} (${sheet.width}x${sheet.height}).`,
+      );
     });
 
   program

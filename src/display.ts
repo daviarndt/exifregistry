@@ -254,6 +254,57 @@ export function printError(message: string): void {
   console.error(pc.red(message));
 }
 
+/** Tags whose values differ between any two files by nature, not by content. */
+const DIFF_VOLATILE = new Set([
+  "SourceFile", "FileName", "Directory", "FileAccessDate",
+  "FileInodeChangeDate", "FilePermissions",
+]);
+
+export interface DiffResult {
+  differing: [tag: string, a: string, b: string][];
+  identical: number;
+}
+
+/** Compare two metadata objects, skipping filesystem-identity tags. */
+export function buildDiffRows(a: Metadata, b: Metadata): DiffResult {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  const differing: [string, string, string][] = [];
+  let identical = 0;
+  for (const key of [...keys].sort()) {
+    if (DIFF_VOLATILE.has(key)) continue;
+    const va = a[key];
+    const vb = b[key];
+    if (String(va) === String(vb)) {
+      identical += 1;
+    } else {
+      differing.push([
+        key,
+        va === undefined ? "(absent)" : String(va),
+        vb === undefined ? "(absent)" : String(vb),
+      ]);
+    }
+  }
+  return { differing, identical };
+}
+
+/** Horizontal bar chart for stats sections. */
+export function printBarSection(
+  title: string,
+  entries: [label: string, count: number][],
+): void {
+  if (entries.length === 0) return;
+  console.log(pc.bold(pc.cyan(title)));
+  const max = Math.max(...entries.map(([, n]) => n));
+  const labelWidth = Math.min(28, Math.max(...entries.map(([l]) => l.length)));
+  for (const [label, count] of entries) {
+    const bar = "█".repeat(Math.max(1, Math.round((count / max) * 30)));
+    console.log(
+      `  ${label.slice(0, 28).padEnd(labelWidth)}  ${pc.dim(String(count).padStart(6))}  ${pc.green(bar)}`,
+    );
+  }
+  console.log();
+}
+
 /** Preview a move/copy/rename plan: "source → target" rows, capped. */
 export function printPlan(
   ops: { source: string; target: string }[],

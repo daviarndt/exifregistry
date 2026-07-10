@@ -14,7 +14,12 @@ export {
   planRestoreFromBackup,
   verifyBackup,
 } from "./backup.js";
+export { configPath, loadConfig, saveConfig } from "./config.js";
+export { renderContactSheet } from "./contact.js";
 export { findDupes } from "./dupes.js";
+export { matches, parseCondition } from "./query.js";
+export { computeStats, statsToMarkdown } from "./stats.js";
+export { offsetForZone, offsetFromGps, validateOffset, zoneForCoordinates } from "./tz.js";
 export { defaultExportPath, metadataToMarkdown } from "./markdown.js";
 export {
   executePlan,
