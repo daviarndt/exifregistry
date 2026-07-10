@@ -25,6 +25,18 @@ import {
   printSuccess,
   showProgress,
 } from "./display.js";
+import {
+  assertRootOutsideSources,
+  collectMirrorCandidates,
+  executeBackup,
+  executeRestore,
+  loadManifest,
+  planBackup,
+  planRestoreFromBackup,
+  verifyBackup,
+  type Candidate,
+  type FileFacts,
+} from "./backup.js";
 import { findDupes } from "./dupes.js";
 import {
   FRAME_COLORS,
@@ -56,7 +68,7 @@ import {
   type FileGroup,
   type MoveOp,
 } from "./organizer.js";
-import { captureDateParts, needsGeolocation } from "./pattern.js";
+import { captureDateParts, needsGeolocation, resolvePattern } from "./pattern.js";
 import { expandPaths } from "./paths.js";
 import { planRestore, restore } from "./undo.js";
 
@@ -318,6 +330,8 @@ Examples:
   $ exifreg ingest /Volumes/SD --to ~/Photos --verify --apply
   $ exifreg frame photo.jpg -c off-white --ratio 4:5  aesthetic EXIF frame
   $ exifreg resize photo.jpg --max-size 1mb           best quality under 1 MB
+  $ exifreg backup ~/Photos --to /Volumes/BK --apply  verified append-only backup
+  $ exifreg backup --verify --to /Volumes/BK          detect silent corruption
   $ exifreg undo photo.jpg                            restore a metadata backup
 
 Run "exifreg <command> --help" for all options of a command.
@@ -804,6 +818,204 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
         await resizeFiles(paths, options);
       } catch (err) {
         fail((err as Error).message);
+      }
+    });
+
+  program
+    .command("backup")
+    .description("Verified, append-only backup of photo folders (SHA-256 manifest).")
+    .argument("[sources...]", "folders (or files) to back up")
+    .option("--to <dir>", "backup destination root (e.g. an external drive)")
+    .option("--by <pattern>", 'organize the backup by pattern (e.g. "{year}/{date}") instead of mirroring folders')
+    .option("--paranoid", "re-hash every file instead of trusting size and date")
+    .option("--verify", "re-hash the whole backup at --to against its manifest (bit-rot check)")
+    .option("--status", "show a summary of the backup at --to")
+    .option("--apply", "execute the plan (default is a dry-run preview)")
+    .action(async (sources: string[], opts) => {
+      if (!opts.to) fail("Tell me where the backup lives with --to <dir>.");
+
+      if (opts.verify) {
+        const result = await verifyBackup(opts.to, {
+          onProgress: (c, t, f) => showProgress(c, t, f),
+        });
+        clearProgress();
+        if (result.checked === 0) fail(`No backup manifest found at "${opts.to}".`);
+        console.log(`${result.ok}/${result.checked} files verified OK.`);
+        for (const rel of result.corrupted) {
+          printError(`CORRUPTED (bytes changed since backup): ${rel}`);
+        }
+        for (const rel of result.missingFiles) {
+          printError(`MISSING from backup: ${rel}`);
+        }
+        if (result.corrupted.length + result.missingFiles.length > 0) {
+          fail(
+            `${result.corrupted.length + result.missingFiles.length} problem(s) found. ` +
+              "The affected files should be re-copied from a healthy source.",
+          );
+        }
+        printSuccess("Backup is healthy: every file matches its recorded checksum.");
+        return;
+      }
+
+      if (opts.status) {
+        const manifest = loadManifest(opts.to);
+        const entries = Object.values(manifest.entries);
+        if (entries.length === 0) fail(`No backup manifest found at "${opts.to}".`);
+        const bytes = entries.reduce((n, e) => n + e.size, 0);
+        const versions = entries.reduce((n, e) => n + (e.versions?.length ?? 0), 0);
+        const dated = entries.filter((e) => e.takenAt).map((e) => e.takenAt!).sort();
+        console.log(`Backup at ${opts.to}`);
+        console.log(`  files:        ${entries.length} (${formatBytes(bytes)})`);
+        console.log(`  versions:     ${versions} archived under _versions/`);
+        if (dated.length > 0) {
+          console.log(`  capture span: ${dated[0].slice(0, 10)} to ${dated[dated.length - 1].slice(0, 10)}`);
+        }
+        console.log(`  last updated: ${manifest.updated}`);
+        return;
+      }
+
+      if (sources.length === 0) {
+        fail("Tell me what to back up, e.g.: exifreg backup ~/Photos --to /Volumes/Backup");
+      }
+      try {
+        assertRootOutsideSources(opts.to, sources);
+      } catch (err) {
+        fail((err as Error).message);
+      }
+
+      let candidates: Candidate[];
+      try {
+        if (opts.by) {
+          const files = resolveFiles(sources, true);
+          const { groups, metadataByPrimary } = await prepareGroups(files, opts.by);
+          candidates = groups.flatMap((group) => {
+            const folder = resolvePattern(opts.by, {
+              file: group.primary,
+              metadata: metadataByPrimary.get(group.primary) ?? {},
+            });
+            return group.members.map((member) => ({
+              source: member,
+              relPath: `${folder}/${path.basename(member)}`,
+            }));
+          });
+        } else {
+          candidates = collectMirrorCandidates(sources);
+        }
+      } catch (err) {
+        fail((err as Error).message);
+      }
+
+      const manifest = loadManifest(opts.to);
+      const plan = planBackup(candidates, manifest, { paranoid: opts.paranoid });
+
+      console.log(
+        `${plan.items.filter((i) => i.reason === "new").length} new, ` +
+          `${plan.items.filter((i) => i.reason === "modified").length} changed, ` +
+          `${plan.unchanged} unchanged (${formatBytes(plan.totalBytes)} to copy).`,
+      );
+      if (plan.missing.length > 0) {
+        console.log(
+          `${plan.missing.length} file(s) no longer exist at the source; ` +
+            "their backup copies are kept.",
+        );
+      }
+      if (plan.items.length === 0) {
+        printSuccess("Backup is up to date.");
+        return;
+      }
+      if (!opts.apply) {
+        printDryRunHint();
+        return;
+      }
+
+      // Best-effort EXIF facts for the manifest (capture date, camera).
+      const facts = new Map<string, FileFacts>();
+      try {
+        const mediaSources = plan.items.map((i) => i.source);
+        const metadata = await engine.read(mediaSources);
+        mediaSources.forEach((source, i) => {
+          const m = metadata[i] ?? {};
+          const takenAt = m.DateTimeOriginal ?? m.CreateDate;
+          facts.set(path.resolve(source), {
+            ...(typeof takenAt === "string" ? { takenAt } : {}),
+            ...(m.Model ? { camera: String(m.Model) } : {}),
+          });
+        });
+      } catch {
+        /* facts are optional; the backup itself never depends on them */
+      }
+
+      const result = await executeBackup(opts.to, manifest, plan, {
+        facts,
+        onProgress: (c, t, f) => showProgress(c, t, f),
+      });
+      clearProgress();
+      printSuccess(
+        `${result.copied} file(s) copied and verified (${formatBytes(result.bytes)})` +
+          (result.versioned ? `, ${result.versioned} previous version(s) archived` : "") +
+          (result.refreshed ? `, ${result.refreshed} unchanged after checksum` : "") +
+          ". Check integrity anytime with: exifreg backup --verify --to " + opts.to,
+      );
+    });
+
+  program
+    .command("restore")
+    .description("Restore files from a backup made with 'exifreg backup'.")
+    .argument("<backup>", "backup root (the folder that holds the manifest)")
+    .option("--to <dir>", "restore into this folder instead of the original locations")
+    .option("--taken <date>", 'only files captured then, e.g. "2026", "2026-07" or "2026-07-05"')
+    .option("--apply", "execute the plan (default is a dry-run preview)")
+    .action(async (backupRoot: string, opts) => {
+      let items;
+      try {
+        items = await planRestoreFromBackup(backupRoot, {
+          to: opts.to,
+          taken: opts.taken,
+          onProgress: (c, t, f) => showProgress(c, t, f),
+        });
+      } catch (err) {
+        fail((err as Error).message);
+      }
+      clearProgress();
+      const restore = items.filter((i) => i.action === "restore");
+      const there = items.filter((i) => i.action === "already-there");
+      const conflicts = items.filter((i) => i.action === "conflict");
+      if (items.length === 0) {
+        fail(
+          opts.taken
+            ? `Nothing in this backup matches --taken ${opts.taken}.`
+            : `No backup manifest found at "${backupRoot}".`,
+        );
+      }
+      console.log(
+        `${restore.length} to restore, ${there.length} already in place, ` +
+          `${conflicts.length} conflict(s).`,
+      );
+      for (const c of conflicts.slice(0, 10)) {
+        console.log(`  conflict (exists with different content, kept): ${c.to}`);
+      }
+      if (conflicts.length > 10) console.log(`  … and ${conflicts.length - 10} more`);
+      if (restore.length === 0) {
+        printSuccess("Nothing to restore.");
+        return;
+      }
+      if (!opts.apply) {
+        printDryRunHint();
+        return;
+      }
+      const result = await executeRestore(items, {
+        onProgress: (c, t, f) => showProgress(c, t, f),
+      });
+      clearProgress();
+      for (const rel of result.corruptedInBackup) {
+        printError(`NOT restored (backup copy is corrupted): ${rel}`);
+      }
+      printSuccess(`${result.restored} file(s) restored and checksum-verified.`);
+      if (result.corruptedInBackup.length > 0) {
+        fail(
+          `${result.corruptedInBackup.length} backup cop(ies) failed their checksum ` +
+            "and were NOT restored. Run: exifreg backup --verify --to " + backupRoot,
+        );
       }
     });
 

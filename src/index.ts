@@ -5,6 +5,15 @@ export * as fields from "./fields.js";
 export { expandPaths } from "./paths.js";
 export { planRestore, restore } from "./undo.js";
 export { fullReportRows } from "./display.js";
+export {
+  collectMirrorCandidates,
+  executeBackup,
+  executeRestore,
+  loadManifest,
+  planBackup,
+  planRestoreFromBackup,
+  verifyBackup,
+} from "./backup.js";
 export { findDupes } from "./dupes.js";
 export { defaultExportPath, metadataToMarkdown } from "./markdown.js";
 export {

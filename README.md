@@ -37,6 +37,7 @@ $ exifreg show IMG_4021.CR3
 - ✏️ **Rename by pattern** — `{date}_{time}_{name}`, `{date}_{counter:3}` in shooting order
 - 💾 **Ingest** — import memory cards into organized folders with SHA-256 copy verification
 - 🔍 **Dupes** — find byte-identical duplicates before they clutter your library
+- 🗄 **Backup** — verified, append-only backups with a SHA-256 manifest: changed files are versioned (never overwritten), deletions never propagate, and `--verify` detects silent corruption years later
 - 🖼 **Frame** — re-render photos inside an aesthetic colored frame with their EXIF caption in Space Mono, ready for portfolios and social media (multiple aspect ratios, 21 named colors)
 - 📐 **Resize & convert** — hit an exact file size ("make this 1MB") with the best quality that fits, resize by long edge/percent, convert JPEG/WebP/AVIF/PNG — originals never touched, EXIF preserved
 - 🧭 **Interactive mode** — just run `exifreg` and follow the menus; zero flags to memorize
@@ -141,6 +142,31 @@ exifreg split ~/Downloads/mixed --apply
 exifreg dupes ~/Photos -r
 exifreg dupes ~/Photos -r --delete --apply       # keeps the first of each group
 ```
+
+### Backing up
+
+Photographer-shaped backups: local, verified, and honest about their own health.
+
+```bash
+exifreg backup ~/Photos --to /Volumes/Backup           # preview what would be copied
+exifreg backup ~/Photos --to /Volumes/Backup --apply   # copy, every file checksum-verified
+exifreg backup --verify --to /Volumes/Backup           # re-hash everything: detects bit rot
+exifreg backup --status --to /Volumes/Backup           # size, file count, capture span
+exifreg backup ~/Photos --to /Volumes/BK --by "{year}/{date}" --apply   # organized layout
+
+exifreg restore /Volumes/Backup                        # put missing originals back
+exifreg restore /Volumes/Backup --taken 2026-07        # just one month's photos
+exifreg restore /Volumes/Backup --to ./recovered       # or into a separate folder
+```
+
+How it keeps your archive safe:
+
+- **Append-only.** Deleting a photo at the source never deletes it from the backup. Sync tools propagate mistakes; backups should not.
+- **Versioned, never overwritten.** When a file changes, the previous backup copy is archived under `_versions/` before the new one lands.
+- **Every copy is atomic and verified.** Files are written to a temporary name, hashed on both sides, then renamed into place. A power cut cannot leave a half-file with a valid name.
+- **A manifest records everything**: source path, size, SHA-256, capture date and camera for every file. `--verify` re-hashes the whole backup against it, catching the silent disk corruption (bit rot) that most people only discover the day they need the backup.
+- **Restore is careful too.** Existing files with different content are conflicts and are never overwritten, and a backup copy that fails its own checksum is refused rather than restored.
+- Incremental runs are fast: unchanged files are skipped by size and date (`--paranoid` re-hashes everything if you want the slow, certain answer).
 
 ### Framing photos
 
