@@ -32,15 +32,21 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # Updates the Homebrew formula in daviarndt/homebrew-tap to the new version.
-  # Optional: only runs when a TAP_TOKEN secret (a PAT with write access to the
-  # tap repo) is present.
+  # Optional: the steps skip themselves unless a TAP_TOKEN secret (a PAT with
+  # write access to the tap repo) is present. The `secrets` context is not
+  # allowed in a job-level `if`, so it is mapped to `env` and checked per step.
   bump-homebrew:
     needs: publish
-    if: ${{ secrets.TAP_TOKEN != '' }}
     runs-on: ubuntu-latest
+    env:
+      TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
     steps:
+      - name: Note when skipping
+        if: env.TAP_TOKEN == ''
+        run: echo "TAP_TOKEN not set; skipping the Homebrew formula bump."
       - name: Compute version and checksum
         id: info
+        if: env.TAP_TOKEN != ''
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -51,6 +57,7 @@ jobs:
           done
           echo "sha=$(sha256sum pkg.tgz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Update the formula
+        if: env.TAP_TOKEN != ''
         env:
           GH_TOKEN: ${{ secrets.TAP_TOKEN }}
           VERSION: ${{ steps.info.outputs.version }}
