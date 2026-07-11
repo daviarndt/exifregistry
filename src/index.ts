@@ -14,7 +14,16 @@ export {
   planRestoreFromBackup,
   verifyBackup,
 } from "./backup.js";
-export { configPath, loadConfig, saveConfig } from "./config.js";
+export {
+  CONFIG_KEYS,
+  configPath,
+  flattenConfig,
+  loadConfig,
+  saveConfig,
+  setConfigKey,
+} from "./config.js";
+export { completionScript, parseShell } from "./completion.js";
+export { historyPath, readHistory, recordHistory } from "./history.js";
 export { renderContactSheet } from "./contact.js";
 export { findDupes } from "./dupes.js";
 export { matches, parseCondition } from "./query.js";

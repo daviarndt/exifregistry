@@ -8,14 +8,14 @@
 
 A friendly command-line toolkit for photographers and filmmakers to **inspect and edit photo/video metadata**: EXIF, GPS location, capture dates and more.
 
-Works with JPEG, PNG, TIFF, HEIC, all major RAW formats (CR2/CR3, NEF, ARW, DNG, RAF, ORF...) and video containers (MP4, MOV, AVI...), powered by the battle-tested [ExifTool](https://exiftool.org), which comes **bundled**, so there is nothing else to install.
+Works with JPEG, PNG, TIFF, HEIC, all major RAW formats (ARW, CR2/CR3, NEF, DNG, RAF, ORF...) and video containers (MP4, MOV, AVI...), powered by the battle-tested [ExifTool](https://exiftool.org), which comes **bundled**, so there is nothing else to install.
 
 ```
-$ exifreg show IMG_4021.CR3
+$ exifreg show DSC02481.ARW
 ┌────────────────────────────┬─────────────────────────┐
-│ File                       │ IMG_4021.CR3            │
-│ Camera                     │ Canon EOS R6            │
-│ Lens                       │ RF 35mm F1.8            │
+│ File                       │ DSC02481.ARW            │
+│ Camera                     │ Sony A7 IV              │
+│ Lens                       │ FE 35mm F1.8            │
 │ ISO                        │ 400                     │
 │ Aperture                   │ f/2.8                   │
 │ Shutter                    │ 1/250s                  │
@@ -46,12 +46,23 @@ $ exifreg show IMG_4021.CR3
 - 🖼 **Contact sheets**: a client-ready thumbnail grid with EXIF labels, one JPEG
 - 🖼 **Frame**: re-render photos inside an aesthetic colored frame with their EXIF caption in Space Mono, ready for portfolios and social media (multiple aspect ratios, 21 named colors)
 - 📐 **Resize & convert**: hit an exact file size ("make this 1MB") with the best quality that fits, resize by long edge/percent, convert JPEG/WebP/AVIF/PNG. Originals never touched, EXIF preserved
-- 🧭 **Interactive mode**: just run `exifreg` and follow the menus; zero flags to memorize
+- ⚙️ **Config**: save defaults once (your name for `sign`, a backup drive, a favorite frame color) and stop repeating flags
+- 📜 **History**: `exifreg history` shows every operation that changed your files
+- ⌨️ **Shell completion**: bash, zsh and fish
+- 🧭 **Interactive mode**: just run `exifreg` and follow the menus; zero flags to memorize (backup included)
 - 📦 **Self-contained**: ExifTool is bundled; `npm install` and you're done
 
 All file operations are **dry-run by default** (they print the plan; `--apply` executes), RAW+JPEG pairs and `.xmp`/`.aae` sidecars always travel together, nothing is ever overwritten, and every executed batch can be reverted with `--undo`.
 
 ## Installation
+
+### Homebrew (macOS/Linux)
+
+```bash
+brew install daviarndt/tap/exifregistry
+```
+
+### npm
 
 Requires [Node.js](https://nodejs.org) 20.18 or newer.
 
@@ -59,12 +70,20 @@ Requires [Node.js](https://nodejs.org) 20.18 or newer.
 npm install -g exifregistry
 ```
 
-This installs the **`exifreg`** command (`exifregistry` also works as a long alias).
+Either way you get the **`exifreg`** command (`exifregistry` also works as a long alias).
 
 Or straight from GitHub:
 
 ```bash
 npm install -g github:daviarndt/exifregistry
+```
+
+Enable tab completion for your shell:
+
+```bash
+exifreg completion zsh  > "${fpath[1]}/_exifreg"   # zsh
+exifreg completion bash >> ~/.bashrc               # bash (or a completion.d file)
+exifreg completion fish >  ~/.config/fish/completions/exifreg.fish
 ```
 
 Verify everything is ready:
@@ -89,12 +108,12 @@ exifreg
 # Inspect metadata (key fields: camera, shutter count, exposure, dates, GPS)
 exifreg show photo.jpg
 exifreg show photo.jpg -v           # verbose: also list ALL remaining tags
-exifreg show *.CR3                  # globs work
+exifreg show *.ARW                  # globs work
 exifreg show ~/Photos/trip -r       # whole folders, recursively
 exifreg show photo.jpg --all        # flat alphabetical dump instead
 exifreg show photo.jpg --json       # machine-readable
 exifreg show photo.jpg --export     # also save the report as photo.metadata.md
-exifreg show *.CR3 -e shoot-day1.md # batch report into one custom .md file
+exifreg show *.ARW -e shoot-day1.md # batch report into one custom .md file
 
 # Set GPS location: paste coordinates straight from a maps app
 exifreg gps photo.jpg --coords "-23.5505, -46.6333"
@@ -105,13 +124,13 @@ exifreg gps photo.jpg --remove       # delete GPS data
 # Edit dates
 exifreg date photo.jpg --taken "2024-06-01 14:30"    # capture date
 exifreg date photo.jpg --modified "2024-06-02 10:00" # edit date
-exifreg date *.NEF --all "2024-06-01 14:30"          # all dates at once
+exifreg date *.ARW --all "2024-06-01 14:30"          # all dates at once
 exifreg date *.jpg --shift "+2h"                     # camera clock was 2h behind
 exifreg date *.jpg --shift "-1d 30m"                 # shift back 1 day 30 min
 exifreg date photo.jpg --taken "2024-06-01" --sync-file  # also sync file mtime
 
 # Copy all metadata from one file to another
-exifreg copy original.CR3 exported.jpg
+exifreg copy original.ARW exported.jpg
 
 # Strip ALL metadata (privacy)
 exifreg strip photo.jpg
@@ -134,8 +153,8 @@ exifreg organize . --by "{year}/{month}" --copy  # copy instead of move
 exifreg organize --undo --to ~/Photos            # revert the last batch
 
 # Rename in place (RAW+JPEG pairs and sidecars keep matching names)
-exifreg rename *.CR3 -p "{date}_{time}_{name}"
-exifreg rename . -p "wedding_{counter:3}"        # wedding_001.CR3, _002... in shooting order
+exifreg rename *.ARW -p "{date}_{time}_{name}"
+exifreg rename . -p "wedding_{counter:3}"        # wedding_001.ARW, _002... in shooting order
 exifreg rename --undo .
 
 # Import a memory card: copies (never deletes from the card), verified
@@ -156,10 +175,10 @@ exifreg stats ~/Photos -r                    # cameras, lenses, focals, ISO, mon
 exifreg stats ~/Photos -r -e stats.md        # export the report to Markdown
 
 exifreg find . -w "ISO>3200"                 # paths only: pipe-friendly
-exifreg find . -w "Model~canon" -w "DateTimeOriginal>=2026:07"   # conditions AND
+exifreg find . -w "Model~sony" -w "DateTimeOriginal>=2026:07"   # conditions AND
 exifreg find . -w "LensModel~35mm" | xargs exifreg frame -c white
 
-exifreg diff original.CR3 exported.jpg       # what changed? side-by-side table
+exifreg diff original.ARW exported.jpg       # what changed? side-by-side table
 ```
 
 Query operators: `=` `!=` `>` `>=` `<` `<=` and `~` (contains). Values compare numerically when both sides are numbers; EXIF dates compare chronologically as strings.
@@ -179,6 +198,26 @@ exifreg timezone trip/ --from-gps            # derive each photo's offset from i
 ```bash
 exifreg contact wedding/ -c 5                # 5 columns, wedding-contact.jpg
 exifreg contact selects/ --out client.jpg    # RAW files use their embedded previews
+```
+
+### Defaults and history
+
+Save the things you would otherwise type every time:
+
+```bash
+exifreg config sign.artist "Davi Arndt"                 # your name for `sign`
+exifreg config sign.copyright "© {year} Davi Arndt"     # {year} expands on use
+exifreg config backup.to "/Volumes/Backup"              # default backup drive
+exifreg config frame.color "off-white"                  # default frame color
+exifreg config                                          # show current settings
+exifreg config --path                                   # where the file lives
+```
+
+See what you have done lately:
+
+```bash
+exifreg history            # recent operations, newest first
+exifreg history -n 50      # more of them
 ```
 
 ### Backing up
@@ -212,7 +251,7 @@ Render photos inside a colored frame with their EXIF written underneath (or on t
 
 ```bash
 exifreg frame photo.jpg                            # white frame, EXIF below
-exifreg frame *.CR3 -c off-white --ratio 4:5       # RAW works (embedded preview)
+exifreg frame *.ARW -c off-white --ratio 4:5       # RAW works (embedded preview)
 exifreg frame photo.jpg -c charcoal --ratio 1:1 --caption top
 exifreg frame photo.jpg -c sage --caption none     # no text at all, just the frame
 exifreg frame photo.jpg --camera                   # add the camera model to the caption
@@ -252,7 +291,7 @@ Every write keeps the untouched original next to the edited file with an `_origi
 | Type   | Formats |
 |--------|---------|
 | Images | JPEG, PNG, TIFF, HEIC/HEIF, WebP |
-| RAW    | DNG, CR2, CR3 (Canon), NEF/NRW (Nikon), ARW (Sony), RAF (Fujifilm), ORF (Olympus), RW2 (Panasonic), PEF (Pentax), and more |
+| RAW    | ARW (Sony), CR2/CR3 (Canon), NEF/NRW (Nikon), DNG, RAF (Fujifilm), ORF (Olympus), RW2 (Panasonic), PEF (Pentax), and more |
 | Video  | MP4, MOV, M4V, AVI, MKV, MTS/M2TS |
 
 Anything ExifTool understands can be read; write support follows ExifTool's [supported formats](https://exiftool.org/#supported).

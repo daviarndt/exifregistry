@@ -25,6 +25,14 @@ import {
 } from "./display.js";
 import { defaultExportPath } from "./markdown.js";
 import { executePlan, journalBatch, planOrganize, planRename } from "./organizer.js";
+import {
+  assertRootOutsideSources,
+  collectMirrorCandidates,
+  executeBackup,
+  loadManifest,
+  planBackup,
+} from "./backup.js";
+import { loadConfig, saveConfig } from "./config.js";
 import { expandPaths } from "./paths.js";
 import { planRestore, restore } from "./undo.js";
 
@@ -245,7 +253,7 @@ async function actionOrganize(): Promise<void> {
     choices: [
       { name: "By date          → 2026/2026-07-05/", value: "{year}/{date}" },
       { name: "By month         → 2026/07/", value: "{year}/{month}" },
-      { name: "By camera        → Canon EOS R6/2026-07-05/", value: "{camera}/{date}" },
+      { name: "By camera        → Sony A7 IV/2026-07-05/", value: "{camera}/{date}" },
       { name: "By location      → Brazil/Sao Paulo/", value: "{country}/{city}" },
       { name: "Custom pattern…", value: "custom" },
     ],
@@ -426,6 +434,108 @@ async function actionResize(): Promise<void> {
   }
 }
 
+function formatMB(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+async function actionBackup(): Promise<void> {
+  const savedTo = loadConfig().backup?.to;
+  const srcAnswer = (
+    await input({ message: "Which folder to back up? (a path)" })
+  ).trim();
+  if (!srcAnswer) return;
+  const sources = [srcAnswer];
+
+  const dest = (
+    await input({
+      message: "Backup destination (an external drive, for example):",
+      default: savedTo,
+    })
+  ).trim();
+  if (!dest) return;
+
+  try {
+    assertRootOutsideSources(dest, sources);
+  } catch (err) {
+    printError((err as Error).message);
+    return;
+  }
+
+  let candidates;
+  try {
+    candidates = collectMirrorCandidates(sources);
+  } catch (err) {
+    printError((err as Error).message);
+    return;
+  }
+
+  const manifest = loadManifest(dest);
+  const plan = planBackup(candidates, manifest);
+  const newCount = plan.items.filter((i) => i.reason === "new").length;
+  const changed = plan.items.filter((i) => i.reason === "modified").length;
+  console.log(
+    pc.dim(
+      `${newCount} new, ${changed} changed, ${plan.unchanged} unchanged ` +
+        `(${formatMB(plan.totalBytes)} to copy).`,
+    ),
+  );
+  if (plan.missing.length > 0) {
+    console.log(
+      pc.dim(
+        `${plan.missing.length} file(s) gone from the source are kept in the backup.`,
+      ),
+    );
+  }
+  if (plan.items.length === 0) {
+    printSuccess("Backup is already up to date.");
+    return;
+  }
+  if (
+    !(await confirm({
+      message: `Copy ${plan.items.length} file(s), each checksum-verified?`,
+      default: true,
+    }))
+  ) {
+    return;
+  }
+
+  const facts = new Map();
+  try {
+    const metadata = await engine.read(plan.items.map((i) => i.source));
+    plan.items.forEach((item, i) => {
+      const m = metadata[i] ?? {};
+      const takenAt = m.DateTimeOriginal ?? m.CreateDate;
+      facts.set(path.resolve(item.source), {
+        ...(typeof takenAt === "string" ? { takenAt } : {}),
+        ...(m.Model ? { camera: String(m.Model) } : {}),
+      });
+    });
+  } catch {
+    /* facts optional */
+  }
+
+  const result = await executeBackup(dest, manifest, plan, { facts });
+  printSuccess(
+    `${result.copied} file(s) backed up and verified (${formatMB(result.bytes)})` +
+      (result.versioned ? `, ${result.versioned} version(s) archived` : "") + ".",
+  );
+
+  if (
+    savedTo !== dest &&
+    (await confirm({
+      message: `Remember "${dest}" as your default backup destination?`,
+      default: true,
+    }))
+  ) {
+    saveConfig({ backup: { to: dest } });
+    printSuccess("Saved. Next time just pick this action and press Enter.");
+  }
+  console.log(
+    pc.dim(`Check integrity anytime with:  exifreg backup --verify --to ${dest}`),
+  );
+}
+
 async function actionUndo(): Promise<void> {
   const answer = (
     await input({
@@ -465,6 +575,7 @@ export async function runInteractive(): Promise<void> {
     rename: actionRename,
     frame: actionFrame,
     resize: actionResize,
+    backup: actionBackup,
     undo: actionUndo,
   };
 
@@ -484,6 +595,7 @@ export async function runInteractive(): Promise<void> {
           { name: "✏️   Rename by pattern", value: "rename" },
           { name: "🖼   Frame photos (EXIF caption)", value: "frame" },
           { name: "📐  Resize / convert photos", value: "resize" },
+          { name: "🗄   Back up a folder (verified)", value: "backup" },
           { name: "↩️   Undo metadata edit (restore backup)", value: "undo" },
           { name: "👋  Quit", value: "quit" },
         ],

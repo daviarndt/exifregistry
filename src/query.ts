@@ -1,7 +1,7 @@
 /**
  * `exifreg find`: tiny metadata query language.
  *
- * A condition looks like `ISO>3200`, `Model=Canon EOS R6`,
+ * A condition looks like `ISO>3200`, `Model=Sony A7 IV`,
  * `LensModel~35mm` or `DateTimeOriginal>=2026:07`. Multiple conditions
  * are ANDed. Values compare numerically when both sides are numbers,
  * otherwise as strings (which works for EXIF dates: "2026:07:05..." sorts
@@ -25,7 +25,7 @@ export function parseCondition(text: string): Condition {
   if (!match) {
     throw new Error(
       `Could not understand the condition "${text}". ` +
-        'Use forms like "ISO>3200", "Model=Canon EOS R6", "LensModel~35mm" ' +
+        'Use forms like "ISO>3200", "Model=Sony A7 IV", "LensModel~35mm" ' +
         'or "DateTimeOriginal>=2026:07".',
     );
   }

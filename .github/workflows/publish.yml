@@ -1,0 +1,65 @@
+name: Publish to npm
+
+# Publishes the package whenever a version tag (v1.2.3) is pushed.
+# Requires a repository secret named NPM_TOKEN: an npm "Automation" access
+# token (npmjs.com -> Access Tokens -> Generate -> Automation). Automation
+# tokens bypass the 2FA prompt, which is what lets this run unattended.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # enables npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Updates the Homebrew formula in daviarndt/homebrew-tap to the new version.
+  # Optional: only runs when a TAP_TOKEN secret (a PAT with write access to the
+  # tap repo) is present.
+  bump-homebrew:
+    needs: publish
+    if: ${{ secrets.TAP_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute version and checksum
+        id: info
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          for i in 1 2 3 4 5 6; do
+            URL="https://registry.npmjs.org/exifregistry/-/exifregistry-$VERSION.tgz"
+            if curl -fsSL "$URL" -o pkg.tgz; then break; fi
+            echo "waiting for npm to serve $VERSION..."; sleep 15
+          done
+          echo "sha=$(sha256sum pkg.tgz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Update the formula
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+          VERSION: ${{ steps.info.outputs.version }}
+          SHA: ${{ steps.info.outputs.sha }}
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/daviarndt/homebrew-tap.git" tap
+          cd tap
+          sed -i -E "s|exifregistry-[0-9.]+\.tgz|exifregistry-${VERSION}.tgz|" Formula/exifregistry.rb
+          sed -i -E "s|sha256 \"[0-9a-f]+\"|sha256 \"${SHA}\"|" Formula/exifregistry.rb
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git commit -am "exifregistry ${VERSION}" && git push

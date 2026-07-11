@@ -14,8 +14,17 @@ import { Command } from "commander";
 
 import * as engine from "./engine.js";
 import * as fields from "./fields.js";
-import { configPath, loadConfig, saveConfig } from "./config.js";
+import {
+  CONFIG_KEYS,
+  configPath,
+  flattenConfig,
+  loadConfig,
+  saveConfig,
+  setConfigKey,
+} from "./config.js";
+import { completionScript, parseShell } from "./completion.js";
 import { renderContactSheet } from "./contact.js";
+import { clearHistory, historyPath, readHistory, recordHistory } from "./history.js";
 import {
   buildDiffRows,
   clearProgress,
@@ -173,6 +182,8 @@ export async function frameFiles(
       prepared.cleanup();
     }
   }
+  clearProgress();
+  recordHistory("frame", `framed ${paths.length} photo(s)`, paths.length);
 }
 
 export interface ResizeRunOptions {
@@ -238,6 +249,8 @@ export async function resizeFiles(
       prepared.cleanup();
     }
   }
+  clearProgress();
+  recordHistory("resize", `resized ${paths.length} photo(s)`, paths.length);
 }
 
 /** Group files with their companions and read pattern metadata for primaries. */
@@ -285,8 +298,10 @@ async function runMovePlan(
   });
   clearProgress();
   journalBatch(opts.journalRoot, command, done, opts.copy ?? false);
+  const verbPast = opts.copy ? "copied" : command === "rename" ? "renamed" : "moved";
+  recordHistory(command, `${verbPast} ${done.length} file(s)`, done.length);
   printSuccess(
-    `${done.length} file(s) ${opts.copy ? "copied" : command === "rename" ? "renamed" : "moved"}. ` +
+    `${done.length} file(s) ${verbPast}. ` +
       `Undo with: exifreg ${command} --undo${command === "rename" ? " <folder>" : ""}`,
   );
 }
@@ -404,7 +419,8 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
           fail("--remove cannot be combined with coordinates.");
         }
         await applyGroupedGps(paths, opts.backup, fields.gpsRemoveEdit);
-        printSuccess(`Removed GPS data from ${describeFiles(paths)}.`);
+        recordHistory("gps", `removed GPS from ${describeFiles(paths)}`, paths.length);
+      printSuccess(`Removed GPS data from ${describeFiles(paths)}.`);
         return;
       }
 
@@ -430,6 +446,7 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
       await applyGroupedGps(paths, opts.backup, (video) =>
         fields.gpsEdit(lat, lon, opts.alt, video),
       );
+      recordHistory("gps", `set GPS on ${describeFiles(paths)}`, paths.length);
       printSuccess(`Set GPS of ${describeFiles(paths)} to ${lat}, ${lon}.`);
     });
 
@@ -485,6 +502,7 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
       }
 
       await engine.applyEdit(paths, edit, { backup: opts.backup });
+      recordHistory("date", `updated dates on ${describeFiles(paths)}`, paths.length);
       printSuccess(`Updated dates on ${describeFiles(paths)}.`);
     });
 
@@ -498,6 +516,7 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
       const [sourcePath] = resolveFiles([source]);
       const targetPaths = resolveFiles(targets);
       await engine.copyMetadata(sourcePath, targetPaths, { backup: opts.backup });
+      recordHistory("copy", `copied metadata to ${describeFiles(targetPaths)}`, targetPaths.length);
       printSuccess(
         `Copied metadata from ${describeFiles([sourcePath])} to ${describeFiles(targetPaths)}.`,
       );
@@ -519,6 +538,7 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
         if (!confirmed) return;
       }
       await engine.stripMetadata(paths, { backup: opts.backup });
+      recordHistory("strip", `stripped metadata from ${describeFiles(paths)}`, paths.length);
       printSuccess(`Stripped all metadata from ${describeFiles(paths)}.`);
     });
 
@@ -600,7 +620,7 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
         return;
       }
       if (files.length === 0) {
-        fail('Tell me what to rename, e.g.: exifreg rename *.CR3 -p "{date}_{counter:3}"');
+        fail('Tell me what to rename, e.g.: exifreg rename *.ARW -p "{date}_{counter:3}"');
       }
       const paths = resolveFiles(files, opts.recursive);
       const { groups, metadataByPrimary } = await prepareGroups(paths, opts.pattern);
@@ -715,6 +735,7 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
       });
       if (!confirmed) return;
       for (const file of doomed) fs.rmSync(file);
+      recordHistory("dupes", `deleted ${doomed.length} duplicate(s)`, doomed.length);
       printSuccess(`Deleted ${doomed.length} duplicate file(s).`);
     });
 
@@ -722,7 +743,7 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
     .command("frame")
     .description("Re-render photos inside an aesthetic colored frame with an EXIF caption.")
     .argument("[files...]", "photos (RAW works too — the embedded preview is used)")
-    .option("-c, --color <color>", 'frame color by name (or "#RRGGBB")', "white")
+    .option("-c, --color <color>", 'frame color by name (or "#RRGGBB"); default white, or config frame.color')
     .option("--ratio <ratio>", '"1:1", "4:5", "9:16", "3:2"... or "original"', "original")
     .option("--caption <position>", "EXIF caption: bottom, top or none", "bottom")
     .option("--camera", "include the camera model in the caption")
@@ -751,7 +772,7 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
       let options: FrameRunOptions;
       try {
         options = {
-          color: resolveColor(opts.color),
+          color: resolveColor(opts.color ?? loadConfig().frame?.color ?? "white"),
           ratio: parseRatio(opts.ratio),
           caption: parseCaptionPosition(opts.caption),
           marginPct: Number(opts.margin),
@@ -899,7 +920,8 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
           { tags: {}, extraArgs: offsetTagArgs(offset) },
           { backup: opts.backup },
         );
-        printSuccess(`Set timezone offset ${offset} on ${describeFiles(paths)}.`);
+        recordHistory("timezone", `set offset ${offset} on ${describeFiles(paths)}`, paths.length);
+      printSuccess(`Set timezone offset ${offset} on ${describeFiles(paths)}.`);
         return;
       }
 
@@ -926,6 +948,7 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
           { tags: {}, extraArgs: offsetTagArgs(offset) },
           { backup: opts.backup },
         );
+        recordHistory("timezone", `set offset ${offset} on ${group.length} file(s)`, group.length);
         printSuccess(
           `${group.length} file(s) set to ${offset} (${zones.get(offset)}).`,
         );
@@ -941,7 +964,7 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
     .argument("<paths...>", "files, folders or glob patterns")
     .requiredOption(
       "-w, --where <condition>",
-      'e.g. "ISO>3200", "Model=Canon EOS R6", "LensModel~35mm" (repeat to AND)',
+      'e.g. "ISO>3200", "Model=Sony A7 IV", "LensModel~35mm" (repeat to AND)',
       (value: string, previous: string[] = []) => [...previous, value],
     )
     .option("-r, --recursive", "recurse into subfolders")
@@ -1036,6 +1059,7 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
       if (artist) tags.Artist = artist;
       if (copyright) tags.Copyright = copyright;
       await engine.applyEdit(paths, { tags, extraArgs: [] }, { backup: opts.backup });
+      recordHistory("sign", `signed ${describeFiles(paths)}`, paths.length);
       printSuccess(
         `Signed ${describeFiles(paths)}` +
           (artist ? ` as "${artist}"` : "") +
@@ -1074,6 +1098,8 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
         title,
         onProgress: (c, t, f) => showProgress(c, t, f),
       });
+      clearProgress();
+      recordHistory("contact", `contact sheet of ${sheet.cells} photos`, sheet.cells);
       printSuccess(
         `Contact sheet with ${sheet.cells} photos → ${out} (${sheet.width}x${sheet.height}).`,
       );
@@ -1090,7 +1116,13 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
     .option("--status", "show a summary of the backup at --to")
     .option("--apply", "execute the plan (default is a dry-run preview)")
     .action(async (sources: string[], opts) => {
-      if (!opts.to) fail("Tell me where the backup lives with --to <dir>.");
+      opts.to = opts.to ?? loadConfig().backup?.to;
+      if (!opts.to) {
+        fail(
+          "Tell me where the backup lives with --to <dir> " +
+            '(or save a default: exifreg config backup.to "/Volumes/Backup").',
+        );
+      }
 
       if (opts.verify) {
         const result = await verifyBackup(opts.to, {
@@ -1208,6 +1240,11 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
         onProgress: (c, t, f) => showProgress(c, t, f),
       });
       clearProgress();
+      recordHistory(
+        "backup",
+        `backed up ${result.copied} file(s) to ${opts.to}`,
+        result.copied,
+      );
       printSuccess(
         `${result.copied} file(s) copied and verified (${formatBytes(result.bytes)})` +
           (result.versioned ? `, ${result.versioned} previous version(s) archived` : "") +
@@ -1268,6 +1305,9 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
       for (const rel of result.corruptedInBackup) {
         printError(`NOT restored (backup copy is corrupted): ${rel}`);
       }
+      if (result.restored > 0) {
+        recordHistory("restore", `restored ${result.restored} file(s)`, result.restored);
+      }
       printSuccess(`${result.restored} file(s) restored and checksum-verified.`);
       if (result.corruptedInBackup.length > 0) {
         fail(
@@ -1278,12 +1318,110 @@ backups by default. Full docs: https://github.com/daviarndt/exifregistry`,
     });
 
   program
+    .command("config")
+    .description("Show or set saved defaults (sign preset, backup destination, frame color).")
+    .argument("[key]", "a config key to read, e.g. sign.artist")
+    .argument("[value]", 'the value to set; empty string unsets it')
+    .option("--path", "print the config file location")
+    .option("--keys", "list every settable key")
+    .action((key: string | undefined, value: string | undefined, opts) => {
+      if (opts.path) {
+        console.log(configPath());
+        return;
+      }
+      if (opts.keys) {
+        for (const [k, desc] of Object.entries(CONFIG_KEYS)) {
+          console.log(`  ${k.padEnd(16)} ${desc}`);
+        }
+        return;
+      }
+      if (key && value !== undefined) {
+        try {
+          setConfigKey(key, value);
+        } catch (err) {
+          fail((err as Error).message);
+        }
+        printSuccess(
+          value === "" ? `Unset ${key}.` : `Set ${key} = ${value}.`,
+        );
+        return;
+      }
+      if (key) {
+        const rows = flattenConfig(loadConfig());
+        const found = rows.find(([k]) => k === key);
+        console.log(found ? found[1] : "");
+        return;
+      }
+      // No args: show current config.
+      const rows = flattenConfig(loadConfig());
+      if (rows.length === 0) {
+        console.log(`No config set yet. File: ${configPath()}`);
+        console.log("Set a default, e.g.:  exifreg config sign.artist \"Davi Arndt\"");
+        console.log("List all keys:        exifreg config --keys");
+        return;
+      }
+      console.log(`Config (${configPath()}):`);
+      for (const [k, v] of rows) console.log(`  ${k.padEnd(16)} ${v}`);
+    });
+
+  program
+    .command("history")
+    .description("Show recent operations that changed your files.")
+    .option("-n, --limit <n>", "how many entries to show", "20")
+    .option("--clear", "erase the history log")
+    .option("--path", "print the history file location")
+    .action((opts) => {
+      if (opts.path) {
+        console.log(historyPath());
+        return;
+      }
+      if (opts.clear) {
+        clearHistory();
+        printSuccess("History cleared.");
+        return;
+      }
+      const entries = readHistory(Number(opts.limit) || 20);
+      if (entries.length === 0) {
+        console.log("No operations recorded yet.");
+        return;
+      }
+      for (const e of entries) {
+        const when = e.date.slice(0, 16).replace("T", " ");
+        const count = e.count !== undefined ? ` (${e.count})` : "";
+        console.log(`${when}  ${e.command.padEnd(9)}${count}  ${e.summary}`);
+      }
+    });
+
+  program
+    .command("completion")
+    .description("Print a shell completion script (bash, zsh or fish).")
+    .argument("<shell>", "bash, zsh or fish")
+    .action((shell: string) => {
+      let parsed;
+      try {
+        parsed = parseShell(shell);
+      } catch (err) {
+        fail((err as Error).message);
+      }
+      const names = program.commands
+        .map((c) => c.name())
+        .filter((n) => n !== "completion");
+      console.log(completionScript(parsed, names));
+    });
+
+  program
     .command("doctor")
     .description("Check that exifregistry is healthy.")
     .action(async () => {
       console.log(`exifregistry ${VERSION}`);
       const version = await engine.exiftoolVersion();
       printSuccess(`Bundled ExifTool ${version} is working.`);
+      const cfg = flattenConfig(loadConfig());
+      console.log(
+        cfg.length > 0
+          ? `Config: ${cfg.length} setting(s) at ${configPath()}`
+          : `Config: none yet (${configPath()})`,
+      );
       console.log("Everything looks good.");
     });
 
